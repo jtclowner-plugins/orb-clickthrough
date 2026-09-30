@@ -51,6 +51,7 @@ public class OrbWidgetTransformer
     private final Map<Widget, Boolean> originalNoClickThrough = new IdentityHashMap<>();
     private final Map<Widget, String> originalTargetVerb = new IdentityHashMap<>();
     private final Map<Widget, String[]> originalActions = new IdentityHashMap<>();
+    private final Map<Widget, Integer> originalOpacity = new IdentityHashMap<>();
     private final Map<Integer, WidgetBounds> originalBounds = new HashMap<>();
 
     @Inject
@@ -90,17 +91,25 @@ public class OrbWidgetTransformer
      */
     public void allowClickThroughTree(int widgetId)
     {
-        Widget root = client.getWidget(widgetId);
+        allowClickThroughTree(client.getWidget(widgetId), Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
 
-        if (root == null)
+    private void allowClickThroughTree(Widget root, Set<Widget> visited)
+    {
+        if (root == null || !visited.add(root))
         {
             return;
         }
 
         allowClickThrough(root);
 
-        Widget[] descendants = root.getNestedChildren();
+        allowClickThroughChildren(root.getStaticChildren(), visited);
+        allowClickThroughChildren(root.getDynamicChildren(), visited);
+        allowClickThroughChildren(root.getNestedChildren(), visited);
+    }
 
+    private void allowClickThroughChildren(Widget[] descendants, Set<Widget> visited)
+    {
         if (descendants == null)
         {
             return;
@@ -108,8 +117,35 @@ public class OrbWidgetTransformer
 
         for (Widget descendant : descendants)
         {
-            allowClickThrough(descendant);
+            allowClickThroughTree(descendant, visited);
         }
+    }
+
+    public void applyTransparency(int percent)
+    {
+        int clampedPercent = Math.max(0, Math.min(100, percent));
+        if (clampedPercent == 0)
+        {
+            restoreTransparency();
+            return;
+        }
+
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            // Layers do not draw; apply alpha to their individual visual children.
+            if (widget.getType() == WidgetType.LAYER)
+            {
+                continue;
+            }
+            int original = originalOpacity.computeIfAbsent(widget, Widget::getOpacity);
+            widget.setOpacity(original + Math.round((255 - original) * clampedPercent / 100f));
+        }
+    }
+
+    public void restoreTransparency()
+    {
+        originalOpacity.forEach(Widget::setOpacity);
+        originalOpacity.clear();
     }
 
     public void allowClickThrough(Widget widget)
@@ -551,6 +587,7 @@ public class OrbWidgetTransformer
 
     public void restoreOrbWidgetsChangedByUs()
     {
+        restoreTransparency();
         restoreHiddenWidgets();
         restoreClickThroughWidgets();
         restoreTargetVerbs();

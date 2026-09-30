@@ -24,5 +24,6 @@ It is intended for players who want to avoid accidentally clicking minimap orbs 
 Enable or disable click-through handling for each supported minimap orb.
 
 ### Miscellaneous
+- **Click-through transparency**: Fade selected orbs by 0–100% (default 50%) whenever click-through is active, in every hotkey mode. Normal appearance returns when clicks are restored. Changes to this setting preserve the current held/toggled state.
 - **Hide World Map tooltip**: Hides the World Map hover tooltip while orb click-through is active.
 

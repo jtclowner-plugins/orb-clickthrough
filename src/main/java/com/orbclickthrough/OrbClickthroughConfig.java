@@ -5,6 +5,8 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Keybind;
+import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 @ConfigGroup("orbclickthrough")
 public interface OrbClickthroughConfig extends Config
@@ -30,6 +32,20 @@ public interface OrbClickthroughConfig extends Config
 			closedByDefault = true
 	)
 	String miscSection = "miscSection";
+
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+			keyName = "clickThroughTransparency",
+			name = "Click-through transparency",
+			description = "Transparency of selected orbs while click-through is active. 0% keeps their normal appearance; 100% is transparent.",
+			section = miscSection,
+			position = 1
+	)
+	default int clickThroughTransparency()
+	{
+		return 50;
+	}
 
 	@ConfigItem(
 			keyName = "hotkey",

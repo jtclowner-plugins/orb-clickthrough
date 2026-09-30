@@ -10,6 +10,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.ClientTick;
+import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.WidgetLoaded;
@@ -307,8 +308,11 @@ public class OrbClickthroughPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			widgetTransformer.restoreEverythingChangedByUs();
-			hotkeyHeld = false;
-			toggleActive = false;
+			if ("hotkey".equals(event.getKey()) || "activationMode".equals(event.getKey()))
+			{
+				hotkeyHeld = false;
+				toggleActive = false;
+			}
 			orbWidgetsApplied = false;
 			markNoClickRegionsDirty();
 			syncState();
@@ -318,10 +322,21 @@ public class OrbClickthroughPlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
+		// Remove the previous frame's tint before game scripts update orb visuals.
+		widgetTransformer.restoreTransparency();
 		// This is deliberately cheap and idempotent. It also repairs widget state
 		// if another plugin or a client update recreates or resets an orb child.
 		syncState();
 		syncExtraNoClickRegionState();
+	}
+
+	@Subscribe
+	public void onBeforeRender(BeforeRender event)
+	{
+		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
+		{
+			widgetTransformer.applyTransparency(config.clickThroughTransparency());
+		}
 	}
 
 	@Subscribe
