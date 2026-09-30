@@ -25,5 +25,6 @@ Enable or disable click-through handling for each supported minimap orb.
 
 ### Miscellaneous
 - **Click-through transparency**: Fade selected orbs by 0–100% (default 50%) whenever click-through is active, in every hotkey mode. Normal appearance returns when clicks are restored. Changes to this setting preserve the current held/toggled state.
+- **Disable click-through hover effects**: Optional checkbox (off by default) that hides orb hover highlights and tooltips while click-through is active. RuneLite hover tooltips are suppressed while the pointer is over a selected orb, including tooltips added by other plugins. Stat values and active prayer/run/XP indicators continue updating normally.
 - **Hide World Map tooltip**: Hides the World Map hover tooltip while orb click-through is active.
 

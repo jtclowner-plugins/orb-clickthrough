@@ -10,6 +10,9 @@ import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
+import net.runelite.api.Point;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.SpriteID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
 
@@ -52,6 +55,8 @@ public class OrbWidgetTransformer
     private final Map<Widget, String> originalTargetVerb = new IdentityHashMap<>();
     private final Map<Widget, String[]> originalActions = new IdentityHashMap<>();
     private final Map<Widget, Integer> originalOpacity = new IdentityHashMap<>();
+    private final Map<Widget, Integer> hoverSprites = new IdentityHashMap<>();
+    private final Map<Widget, Boolean> hoverTooltipVisibility = new IdentityHashMap<>();
     private final Map<Integer, WidgetBounds> originalBounds = new HashMap<>();
 
     @Inject
@@ -146,6 +151,84 @@ public class OrbWidgetTransformer
     {
         originalOpacity.forEach(Widget::setOpacity);
         originalOpacity.clear();
+    }
+
+    public boolean isMouseOverManagedOrb()
+    {
+        Point mouse = client.getMouseCanvasPosition();
+        if (mouse == null)
+        {
+            return false;
+        }
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            if (!widget.isHidden() && widget.contains(mouse))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void suppressHoverEffects()
+    {
+        // Only normalize hover sprites for drawing. Disabling widget listeners
+        // would also stop stat/var/timer updates, freezing the live orb contents.
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            int sprite = widget.getSpriteId();
+            int normal = normalOrbSprite(sprite);
+            if (normal != sprite)
+            {
+                hoverSprites.putIfAbsent(widget, sprite);
+                widget.setSpriteId(normal);
+            }
+        }
+        if (isMouseOverManagedOrb())
+        {
+            hideHoverTooltip(client.getWidget(InterfaceID.Orbs.TOOLTIP));
+            hideHoverTooltip(client.getWidget(InterfaceID.Orbs.WORLDMAP_TOOLTIP));
+            hideHoverTooltip(client.getWidget(InterfaceID.ToplevelPreEoc.MOUSEOVER));
+            hideHoverTooltip(client.getWidget(InterfaceID.ToplevelOsrsStretch.MOUSEOVER));
+        }
+    }
+
+    private void hideHoverTooltip(Widget widget)
+    {
+        if (widget != null)
+        {
+            hoverTooltipVisibility.putIfAbsent(widget, widget.isSelfHidden());
+            widget.setHidden(true);
+        }
+    }
+
+    public void restoreHoverEffects()
+    {
+        hoverSprites.forEach(Widget::setSpriteId);
+        hoverSprites.clear();
+        hoverTooltipVisibility.forEach(Widget::setHidden);
+        hoverTooltipVisibility.clear();
+    }
+
+    static int normalOrbSprite(int sprite)
+    {
+        switch (sprite)
+        {
+            case SpriteID.OrbFrame.FRAME_HOVERED: return SpriteID.OrbFrame.FRAME;
+            case SpriteID.OrbXp.HOVERED: return SpriteID.OrbXp.ORB;
+            case SpriteID.OrbXp.ACTIVATED_HOVERED: return SpriteID.OrbXp.ACTIVATED;
+            case SpriteID.WorldmapIcon._1: return SpriteID.WorldmapIcon._0;
+            case SpriteID.WorldmapIcon._3: return SpriteID.WorldmapIcon._2;
+            case SpriteID.WorldmapIcon._5: return SpriteID.WorldmapIcon._4;
+            case SpriteID.WorldmapIcon._7: return SpriteID.WorldmapIcon._6;
+            case SpriteID.WorldmapIconLarge._1: return SpriteID.WorldmapIconLarge._0;
+            case SpriteID.WorldmapIconLarge._3: return SpriteID.WorldmapIconLarge._2;
+            case SpriteID.WorldmapIconLarge._5: return SpriteID.WorldmapIconLarge._4;
+            case SpriteID.WorldmapIconLarge._7: return SpriteID.WorldmapIconLarge._6;
+            case SpriteID.WikiIcon.SELECTED: return SpriteID.WikiIcon.DESELECTED;
+            case SpriteID.Ring34._1: return SpriteID.Ring34._0;
+            default: return sprite;
+        }
     }
 
     public void allowClickThrough(Widget widget)
@@ -588,6 +671,7 @@ public class OrbWidgetTransformer
     public void restoreOrbWidgetsChangedByUs()
     {
         restoreTransparency();
+        restoreHoverEffects();
         restoreHiddenWidgets();
         restoreClickThroughWidgets();
         restoreTargetVerbs();

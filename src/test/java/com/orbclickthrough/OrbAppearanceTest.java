@@ -4,13 +4,20 @@ import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Point;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.SpriteID;
 import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
 import org.junit.Test;
+import net.runelite.client.ui.overlay.tooltip.Tooltip;
+import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
@@ -88,7 +95,9 @@ public class OrbAppearanceTest
                 OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
                 when(config.activationMode()).thenReturn(mode);
                 when(config.clickThroughTransparency()).thenReturn(65);
+                when(config.disableHoverEffects()).thenReturn(true);
                 OrbWidgetTransformer mockedTransformer = mock(OrbWidgetTransformer.class);
+                when(mockedTransformer.isMouseOverManagedOrb()).thenReturn(true);
                 OrbClickthroughPlugin plugin = new OrbClickthroughPlugin();
                 set(plugin, "client", client);
                 set(plugin, "config", config);
@@ -97,10 +106,76 @@ public class OrbAppearanceTest
                 set(plugin, "toggleActive", active);
                 plugin.onBeforeRender(new BeforeRender());
                 verify(mockedTransformer, times(active ? 1 : 0)).applyTransparency(65);
+                verify(mockedTransformer, times(active ? 1 : 0)).suppressHoverEffects();
+                assertEquals(active, plugin.shouldHideHoverTooltips());
+                when(config.disableHoverEffects()).thenReturn(false);
+                assertFalse(plugin.shouldHideHoverTooltips());
                 plugin.onClientTick(new ClientTick());
                 verify(mockedTransformer).restoreTransparency();
+                verify(mockedTransformer).restoreHoverEffects();
             }
         }
+    }
+
+    @Test
+    public void hoverSuppressionPreservesActiveIndicatorsAndRestoresSpritesAndTooltips()
+    {
+        Widget widget = visual(0);
+        AtomicInteger sprite = new AtomicInteger(SpriteID.OrbXp.ACTIVATED_HOVERED);
+        when(widget.getSpriteId()).thenAnswer(invocation -> sprite.get());
+        when(widget.setSpriteId(anyInt())).thenAnswer(invocation -> {
+            sprite.set(invocation.getArgument(0));
+            return widget;
+        });
+        Point mouse = new Point(100, 100);
+        when(client.getMouseCanvasPosition()).thenReturn(mouse);
+        when(widget.contains(mouse)).thenReturn(true);
+        Widget tooltip = mock(Widget.class);
+        Widget alreadyHidden = mock(Widget.class);
+        when(alreadyHidden.isSelfHidden()).thenReturn(true);
+        when(client.getWidget(InterfaceID.Orbs.TOOLTIP)).thenReturn(tooltip);
+        when(client.getWidget(InterfaceID.Orbs.WORLDMAP_TOOLTIP)).thenReturn(alreadyHidden);
+        transformer.allowClickThrough(widget);
+        assertTrue(transformer.isMouseOverManagedOrb());
+        transformer.suppressHoverEffects();
+        transformer.suppressHoverEffects();
+        assertEquals(SpriteID.OrbXp.ACTIVATED, widget.getSpriteId());
+        verify(tooltip, atLeastOnce()).setHidden(true);
+        verify(widget, never()).setHasListener(anyBoolean());
+        transformer.restoreOrbWidgetsChangedByUs();
+        assertEquals(SpriteID.OrbXp.ACTIVATED_HOVERED, widget.getSpriteId());
+        verify(tooltip).setHidden(false);
+        verify(alreadyHidden, never()).setHidden(false);
+        assertFalse(transformer.isMouseOverManagedOrb());
+    }
+
+    @Test
+    public void hiddenAndUnselectedWidgetsDoNotSuppressTooltips()
+    {
+        Point mouse = new Point(100, 100);
+        when(client.getMouseCanvasPosition()).thenReturn(mouse);
+        Widget widget = visual(0);
+        when(widget.contains(mouse)).thenReturn(true);
+        assertFalse(transformer.isMouseOverManagedOrb());
+        transformer.allowClickThrough(widget);
+        when(widget.isHidden()).thenReturn(true);
+        assertFalse(transformer.isMouseOverManagedOrb());
+        transformer.suppressHoverEffects();
+        verify(client, never()).getWidget(anyInt());
+    }
+
+    @Test
+    public void tooltipOverlayClearsOnlyWhenSuppressionIsActive()
+    {
+        OrbClickthroughPlugin plugin = mock(OrbClickthroughPlugin.class);
+        TooltipManager manager = new TooltipManager();
+        OrbHoverOverlay overlay = new OrbHoverOverlay(plugin, manager);
+        manager.add(new Tooltip("Run energy"));
+        overlay.render(null);
+        assertEquals(1, manager.getTooltips().size());
+        when(plugin.shouldHideHoverTooltips()).thenReturn(true);
+        overlay.render(null);
+        assertTrue(manager.getTooltips().isEmpty());
     }
 
     static void set(Object target, String name, Object value) throws Exception

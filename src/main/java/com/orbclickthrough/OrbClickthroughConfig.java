@@ -48,6 +48,18 @@ public interface OrbClickthroughConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "disableHoverEffects",
+			name = "Disable click-through hover effects",
+			description = "Hide orb hover highlights and tooltips while hovering a selected click-through orb.",
+			section = miscSection,
+			position = 2
+	)
+	default boolean disableHoverEffects()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 			keyName = "hotkey",
 			name = "Hotkey",
 			description = "Hotkey used to activate or restore orb clicks. If no hotkey is set, orbs are always click-through.",

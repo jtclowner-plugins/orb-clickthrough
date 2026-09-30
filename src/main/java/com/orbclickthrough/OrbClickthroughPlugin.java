@@ -25,6 +25,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
+import net.runelite.client.ui.overlay.OverlayManager;
 
 @Slf4j
 @PluginDescriptor(
@@ -189,6 +190,12 @@ public class OrbClickthroughPlugin extends Plugin
 	@Inject
 	private OrbWidgetTransformer widgetTransformer;
 
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private OrbHoverOverlay hoverOverlay;
+
 	private HotkeyListener hotkeyListener;
 
 	private boolean hotkeyHeld;
@@ -232,6 +239,7 @@ public class OrbClickthroughPlugin extends Plugin
 		};
 
 		keyManager.registerKeyListener(hotkeyListener);
+		overlayManager.add(hoverOverlay);
 		markNoClickRegionsDirty();
 		clientThread.invokeLater(this::syncState);
 	}
@@ -239,6 +247,7 @@ public class OrbClickthroughPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		overlayManager.remove(hoverOverlay);
 		if (hotkeyListener != null)
 		{
 			keyManager.unregisterKeyListener(hotkeyListener);
@@ -324,6 +333,7 @@ public class OrbClickthroughPlugin extends Plugin
 	{
 		// Remove the previous frame's tint before game scripts update orb visuals.
 		widgetTransformer.restoreTransparency();
+		widgetTransformer.restoreHoverEffects();
 		// This is deliberately cheap and idempotent. It also repairs widget state
 		// if another plugin or a client update recreates or resets an orb child.
 		syncState();
@@ -335,8 +345,19 @@ public class OrbClickthroughPlugin extends Plugin
 	{
 		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
 		{
+			if (config.disableHoverEffects())
+			{
+				widgetTransformer.suppressHoverEffects();
+			}
 			widgetTransformer.applyTransparency(config.clickThroughTransparency());
 		}
+	}
+
+	boolean shouldHideHoverTooltips()
+	{
+		return client.getGameState() == GameState.LOGGED_IN
+				&& shouldApplyNow() && config.disableHoverEffects()
+				&& widgetTransformer.isMouseOverManagedOrb();
 	}
 
 	@Subscribe
@@ -471,6 +492,8 @@ public class OrbClickthroughPlugin extends Plugin
 		{
 			widgetTransformer.allowClickThroughTree(ACTIVITY_BACKING);
 			widgetTransformer.allowClickThrough(ACTIVITY_BUTTON);
+			widgetTransformer.allowClickThrough(InterfaceID.Orbs.CR_INDICATOR);
+			widgetTransformer.allowClickThrough(InterfaceID.Orbs.CR_ICON);
 		}
 
 		if (config.manageWikiOrb())
@@ -531,7 +554,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 		if (config.manageLogoutOrb())
 		{
-			widgetTransformer.allowClickThrough(LOGOUT_STONE);
+			widgetTransformer.allowClickThroughTree(LOGOUT_STONE);
 		}
 	}
 
