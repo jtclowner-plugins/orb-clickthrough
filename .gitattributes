@@ -1,2 +1,0 @@
-# Preserve upstream line endings and diff context verbatim in patch artifacts.
-compatibility/patches/*.patch -text -whitespace

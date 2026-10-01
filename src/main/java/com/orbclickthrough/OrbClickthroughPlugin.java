@@ -3,9 +3,7 @@ package com.orbclickthrough;
 import com.google.inject.Provides;
 import java.util.Arrays;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -22,7 +20,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.events.PluginMessage;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -192,6 +189,9 @@ public class OrbClickthroughPlugin extends Plugin
 	@Inject
 	private OrbWidgetTransformer widgetTransformer;
 
+	@Inject
+	private OrbTooltipCompatibility tooltipCompatibility;
+
 	private HotkeyListener hotkeyListener;
 	private boolean running;
 
@@ -253,6 +253,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 		clientThread.invokeLater(() ->
 		{
+			tooltipCompatibility.stop();
 			widgetTransformer.restoreEverythingChangedByUs();
 			hotkeyHeld = false;
 			toggleActive = false;
@@ -337,9 +338,13 @@ public class OrbClickthroughPlugin extends Plugin
 		syncExtraNoClickRegionState();
 	}
 
-	@Subscribe
+	@Subscribe(priority = -100)
 	public void onBeforeRender(BeforeRender event)
 	{
+		if (running)
+		{
+			tooltipCompatibility.sync();
+		}
 		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
 		{
 			if (config.disableHoverEffects())
@@ -350,27 +355,10 @@ public class OrbClickthroughPlugin extends Plugin
 		}
 	}
 
-	/** Synchronous, opt-in query; no tooltip queue or foreign overlay is modified. */
-	@Subscribe
-	public void onPluginMessage(PluginMessage event)
+	boolean suppressPluginTooltip(String orb)
 	{
-		if (!running || !CONFIG_GROUP.equals(event.getNamespace()) || !"appearance-v1".equals(event.getName()))
-		{
-			return;
-		}
-		Map<String, Object> data = event.getData();
-		Object orb = data.get("orb");
-		Object reply = data.get("reply");
-		if (!(orb instanceof String) || !(reply instanceof BiConsumer))
-		{
-			return;
-		}
-		boolean active = client.getGameState() == GameState.LOGGED_IN && shouldApplyNow() && managesOrb((String) orb);
-		float opacity = active && config.fadePluginOverlays()
-				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
-		@SuppressWarnings("unchecked")
-		BiConsumer<Float, Boolean> callback = (BiConsumer<Float, Boolean>) reply;
-		callback.accept(opacity, active && config.suppressPluginTooltips());
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
+				&& managesOrb(orb) && config.suppressPluginTooltips();
 	}
 
 	private boolean managesOrb(String orb)

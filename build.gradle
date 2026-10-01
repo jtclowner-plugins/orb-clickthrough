@@ -13,10 +13,7 @@ repositories {
 	mavenCentral()
 }
 
-def compatibility = providers.gradleProperty('compatibility').isPresent()
-def runeLiteVersion = compatibility
-		? new groovy.json.JsonSlurper().parse(file('compatibility/manifest.json')).runeliteVersion
-		: 'latest.release'
+def runeLiteVersion = 'latest.release'
 def pluginMainClass = 'com.orbclickthrough.OrbClickthroughPluginTest'
 
 dependencies {
@@ -25,6 +22,8 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok:1.18.30'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
+	testCompileOnly 'org.projectlombok:lombok:1.18.30'
+	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
 	testImplementation 'junit:junit:4.12'
 	testImplementation 'org.mockito:mockito-core:4.11.0'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -43,7 +42,6 @@ tasks.register('run', JavaExec) {
 	mainClass = pluginMainClass
 
 	jvmArgs "-ea"
-	systemProperty 'orbclickthrough.compatibility', compatibility.toString()
 	args "--developer-mode", "--debug"
 }
 
@@ -71,8 +69,4 @@ tasks.register('shadowJar', Jar) {
 	group = BasePlugin.BUILD_GROUP
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
-}
-
-if (compatibility) {
-	apply from: 'compatibility/build.gradle'
 }
