@@ -97,6 +97,55 @@ public class OrbOverlayCompatibilityTest
     }
 
     @Test
+    public void specRegenTimerSuppressesBothTooltipVariantsOnlyWhileSpecIsClickthrough() throws Exception
+    {
+        Overlay adapter = overlay("com.bram91.specregen.SpecRegenTimerOverlay", client,
+            stub("com.bram91.specregen.SpecRegenTimerPlugin", Map.of()), tooltips);
+        Overlay original = registered.get(0);
+        field(original, "specCount", 1);
+        field(original, "maxSpecs", 2);
+        field(original, "remainingMinutes", 1);
+        field(original, "remainingSecondsString", "30");
+        for (double spec : new double[]{50, 100})
+        {
+            field(original, "currentSpec", spec);
+            for (OrbClickthroughActivationMode mode : OrbClickthroughActivationMode.values())
+            {
+                when(config.activationMode()).thenReturn(mode);
+                for (boolean active : new boolean[]{false, true})
+                {
+                    field(provider, "hotkeyHeld", mode == OrbClickthroughActivationMode.HOLD_TO_RESTORE_CLICKS ? !active : active);
+                    field(provider, "toggleActive", active);
+                    tooltips.clear();
+                    addActualNpcMouseTooltip();
+                    tooltips.add(new net.runelite.client.ui.overlay.tooltip.Tooltip("Take Coins"));
+                    tooltips.add(new net.runelite.client.ui.overlay.tooltip.Tooltip("Open Door"));
+                    List<net.runelite.client.ui.overlay.tooltip.Tooltip> existing = List.copyOf(tooltips.getTooltips());
+                    render(adapter);
+                    assertEquals(active ? 3 : 4, tooltips.getTooltips().size());
+                    assertEquals(existing, tooltips.getTooltips().subList(0, 3));
+                    if (!active)
+                    {
+                        String text = tooltips.getTooltips().get(3).getText();
+                        assertTrue(text.contains("Available special attacks: 1"));
+                        assertEquals(spec < 100, text.contains("Time Remaining till next spec: 1:30"));
+                    }
+                }
+            }
+        }
+        // The last loop leaves toggle mode active. Either opt-out restores the tooltip.
+        when(config.manageSpecialAttackOrb()).thenReturn(false);
+        tooltips.clear();
+        render(adapter);
+        assertEquals(1, tooltips.getTooltips().size());
+        when(config.manageSpecialAttackOrb()).thenReturn(true);
+        when(config.suppressOrbTooltips()).thenReturn(false);
+        tooltips.clear();
+        render(adapter);
+        assertEquals(1, tooltips.getTooltips().size());
+    }
+
+    @Test
     public void quickPrayerPreviewCoversBothQueuedAndDirectPanels() throws Exception
     {
         Class<?> prayerType = Class.forName("io.hydrox.quickprayerpreview.Prayer");

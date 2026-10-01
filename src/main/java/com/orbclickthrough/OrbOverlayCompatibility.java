@@ -83,6 +83,7 @@ class OrbOverlayCompatibility
             case "net.runelite.client.plugins.poison.PoisonOverlay":
             case "com.github.corhen.poisonring.PoisonRingOverlay": return "health";
             case "com.soulreaperaxeqol.SoulreaperAxeQoLNativeOrbOverlay":
+            case "com.bram91.specregen.SpecRegenTimerOverlay":
             case "com.soulreaperaxeqol.SoulreaperAxeQoLExtraOrbOverlay": return "special";
             case "net.runelite.client.plugins.regenmeter.RegenMeterOverlay": return "regeneration";
             default: return null;

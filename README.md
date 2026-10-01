@@ -25,7 +25,7 @@ Enable or disable click-through handling for each supported minimap orb.
 
 ### Miscellaneous
 - **Click-through transparency**: Fade selected orbs by 0–100% (default 50%) whenever click-through is active, in every hotkey mode. Normal appearance returns when clicks are restored. Changes to this setting preserve the current held/toggled state.
-- **Suppress orb tooltips**: On by default. Suppresses native orb tooltips/highlights, the World Map tooltip, Prayer statistics, Run Energy, Poison and both Quick Prayer Preview display modes for selected click-through orbs. All unrelated mouse tooltips remain visible.
+- **Suppress orb tooltips**: On by default. Suppresses native orb tooltips/highlights, the World Map tooltip, Prayer statistics, Run Energy, Poison, Spec Regen Timer and both Quick Prayer Preview display modes for selected click-through orbs. All unrelated mouse tooltips remain visible.
 - **Fade plugin-created orb overlays**: On by default. Applies the transparency percentage to supported plugin orb visuals while their associated orb is click-through. Independent of tooltip suppression.
 
 ## Plugin compatibility
@@ -40,7 +40,7 @@ Support is implemented entirely inside Orb Clickthrough and works with unmodifie
 | Regeneration Meter special-attack ring | Special Attack |
 | Poison Ring | Hitpoints |
 
-Select the associated orb to apply fading. Prayer and Special Attack are not selected by default. Soulreaper's offset extra orb follows the Special Attack selection. LITE Regen Meter and the separate Spec Regen Timer plugin are excluded.
+Select the associated orb to apply fading. Prayer and Special Attack are not selected by default. Soulreaper's offset extra orb follows the Special Attack selection. Spec Regen Timer's tooltip is suppressed while the selected Special Attack orb is click-through. LITE Regen Meter is excluded.
 
 Exact overlay classes identify the supported producers. Original instances remain registered so their owners can remove them on shutdown. Temporary adapters preserve the original rendering layer and restore normal rendering when Orb Clickthrough stops. Unknown overlays are untouched.
 
