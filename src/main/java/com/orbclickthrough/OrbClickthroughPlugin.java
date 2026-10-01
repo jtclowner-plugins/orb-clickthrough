@@ -152,8 +152,7 @@ public class OrbClickthroughPlugin extends Plugin
 	// Compass/logout widgets.
 	private static final int MODERN_COMPASS_CLICK = InterfaceID.ToplevelPreEoc.COMPASSCLICK;
 	private static final int CLASSIC_COMPASS_CLICK = InterfaceID.ToplevelOsrsStretch.COMPASSCLICK;
-	private static final int COMPASS_NOCLICK_CHILD_INDEX = 0;
-	private static final int COMPASS_ACTION_CHILD_INDEX = 1;
+	private static final int FIXED_COMPASS_CLICK = InterfaceID.Toplevel.COMPASSCLICK;
 
 	private static final int LOGOUT_STONE = InterfaceID.ToplevelPreEoc.STONE10;
 
@@ -194,6 +193,9 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private HotkeyListener hotkeyListener;
 	private boolean running;
+
+	@Inject
+	private CompassAppearance compassAppearance;
 
 	private boolean hotkeyHeld;
 	private boolean toggleActive;
@@ -253,6 +255,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 		clientThread.invokeLater(() ->
 		{
+			compassAppearance.stop();
 			overlayCompatibility.stop();
 			widgetTransformer.restoreEverythingChangedByUs();
 			hotkeyHeld = false;
@@ -344,6 +347,7 @@ public class OrbClickthroughPlugin extends Plugin
 		if (running)
 		{
 			overlayCompatibility.sync();
+			compassAppearance.beginFrame();
 		}
 		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
 		{
@@ -365,6 +369,12 @@ public class OrbClickthroughPlugin extends Plugin
 	{
 		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
 				&& managesOrb(orb) && config.fadePluginOverlays()
+				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
+	}
+
+	float nativeOrbOpacity(String orb)
+	{
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow() && managesOrb(orb)
 				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
 	}
 
@@ -560,23 +570,9 @@ public class OrbClickthroughPlugin extends Plugin
 		if (config.manageCompassOrb())
 		{
 			Widget compassClick = getActiveCompassClickWidget();
-
-			if (compassClick != null)
-			{
-				Widget compassNoClickChild = compassClick.getChild(COMPASS_NOCLICK_CHILD_INDEX);
-
-				if (compassNoClickChild != null)
-				{
-					widgetTransformer.allowClickThrough(compassNoClickChild);
-				}
-
-				Widget compassActionChild = compassClick.getChild(COMPASS_ACTION_CHILD_INDEX);
-
-				if (compassActionChild != null)
-				{
-					widgetTransformer.allowClickThrough(compassActionChild);
-				}
-			}
+			widgetTransformer.allowClickThroughTree(compassClick);
+			// Native post-compositing fades this complete area once, including the frame.
+			widgetTransformer.excludeTransparencyTree(compassClick);
 		}
 
 		if (config.manageLogoutOrb())
@@ -690,6 +686,10 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private Widget getActiveCompassClickWidget()
 	{
+		if (!client.isResized())
+		{
+			return client.getWidget(FIXED_COMPASS_CLICK);
+		}
 		int activeMapNoClick0 = getActiveMapNoClick0WidgetId();
 
 		if (activeMapNoClick0 == MODERN_MAP_NOCLICK_0)
@@ -805,7 +805,7 @@ public class OrbClickthroughPlugin extends Plugin
 		}
 
 		if (config.manageCompassOrb()
-				&& isWidgetOrChildOfAny(widgetId, MODERN_COMPASS_CLICK, CLASSIC_COMPASS_CLICK)
+				&& isWidgetOrChildOfAny(widgetId, MODERN_COMPASS_CLICK, CLASSIC_COMPASS_CLICK, FIXED_COMPASS_CLICK)
 				&& COMPASS_MENU_OPTIONS.contains(option))
 		{
 			return true;

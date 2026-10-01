@@ -47,6 +47,7 @@ public class OrbWidgetTransformer
 
     private final Set<Widget> hiddenByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> noClickThroughChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Widget> transparencyExcluded = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> targetVerbChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> actionsChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Integer> boundsChangedByUs = new HashSet<>();
@@ -96,7 +97,20 @@ public class OrbWidgetTransformer
      */
     public void allowClickThroughTree(int widgetId)
     {
-        allowClickThroughTree(client.getWidget(widgetId), Collections.newSetFromMap(new IdentityHashMap<>()));
+        allowClickThroughTree(client.getWidget(widgetId));
+    }
+
+    public void allowClickThroughTree(Widget widget)
+    {
+        allowClickThroughTree(widget, Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    public void excludeTransparencyTree(Widget root)
+    {
+        if (root == null || !transparencyExcluded.add(root)) return;
+        for (Widget[] children : new Widget[][]{root.getStaticChildren(), root.getDynamicChildren(), root.getNestedChildren()})
+            if (children != null)
+                for (Widget child : children) excludeTransparencyTree(child);
     }
 
     private void allowClickThroughTree(Widget root, Set<Widget> visited)
@@ -138,7 +152,7 @@ public class OrbWidgetTransformer
         for (Widget widget : noClickThroughChangedByUs)
         {
             // Layers do not draw; apply alpha to their individual visual children.
-            if (widget.getType() == WidgetType.LAYER)
+            if (widget.getType() == WidgetType.LAYER || transparencyExcluded.contains(widget))
             {
                 continue;
             }
@@ -668,6 +682,7 @@ public class OrbWidgetTransformer
 
     public void restoreOrbWidgetsChangedByUs()
     {
+        transparencyExcluded.clear();
         restoreTransparency();
         restoreHoverEffects();
         restoreHiddenWidgets();
