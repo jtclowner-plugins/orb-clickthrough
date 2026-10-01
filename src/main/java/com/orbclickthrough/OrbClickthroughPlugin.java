@@ -3,7 +3,9 @@ package com.orbclickthrough;
 import com.google.inject.Provides;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -20,12 +22,12 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
-import net.runelite.client.ui.overlay.OverlayManager;
 
 @Slf4j
 @PluginDescriptor(
@@ -190,13 +192,8 @@ public class OrbClickthroughPlugin extends Plugin
 	@Inject
 	private OrbWidgetTransformer widgetTransformer;
 
-	@Inject
-	private OverlayManager overlayManager;
-
-	@Inject
-	private OrbHoverOverlay hoverOverlay;
-
 	private HotkeyListener hotkeyListener;
+	private boolean running;
 
 	private boolean hotkeyHeld;
 	private boolean toggleActive;
@@ -208,6 +205,7 @@ public class OrbClickthroughPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		running = true;
 		log.debug("Orb Clickthrough started");
 
 		hotkeyListener = new HotkeyListener(() -> config.hotkey())
@@ -239,7 +237,6 @@ public class OrbClickthroughPlugin extends Plugin
 		};
 
 		keyManager.registerKeyListener(hotkeyListener);
-		overlayManager.add(hoverOverlay);
 		markNoClickRegionsDirty();
 		clientThread.invokeLater(this::syncState);
 	}
@@ -247,7 +244,7 @@ public class OrbClickthroughPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		overlayManager.remove(hoverOverlay);
+		running = false;
 		if (hotkeyListener != null)
 		{
 			keyManager.unregisterKeyListener(hotkeyListener);
@@ -353,11 +350,46 @@ public class OrbClickthroughPlugin extends Plugin
 		}
 	}
 
-	boolean shouldHideHoverTooltips()
+	/** Synchronous, opt-in query; no tooltip queue or foreign overlay is modified. */
+	@Subscribe
+	public void onPluginMessage(PluginMessage event)
 	{
-		return client.getGameState() == GameState.LOGGED_IN
-				&& shouldApplyNow() && config.disableHoverEffects()
-				&& widgetTransformer.isMouseOverManagedOrb();
+		if (!running || !CONFIG_GROUP.equals(event.getNamespace()) || !"appearance-v1".equals(event.getName()))
+		{
+			return;
+		}
+		Map<String, Object> data = event.getData();
+		Object orb = data.get("orb");
+		Object reply = data.get("reply");
+		if (!(orb instanceof String) || !(reply instanceof BiConsumer))
+		{
+			return;
+		}
+		boolean active = client.getGameState() == GameState.LOGGED_IN && shouldApplyNow() && managesOrb((String) orb);
+		float opacity = active && config.fadePluginOverlays()
+				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
+		@SuppressWarnings("unchecked")
+		BiConsumer<Float, Boolean> callback = (BiConsumer<Float, Boolean>) reply;
+		callback.accept(opacity, active && config.suppressPluginTooltips());
+	}
+
+	private boolean managesOrb(String orb)
+	{
+		switch (orb)
+		{
+			case "health": return config.manageHealthOrb();
+			case "prayer": return config.managePrayerOrb();
+			case "run": return config.manageRunOrb();
+			case "special": return config.manageSpecialAttackOrb();
+			case "worldMap": return config.manageWorldMapOrb();
+			case "xp": return config.manageXpOrb();
+			case "activity": return config.manageActivityOrb();
+			case "wiki": return config.manageWikiOrb();
+			case "store": return config.manageStoreOrb();
+			case "compass": return config.manageCompassOrb();
+			case "logout": return config.manageLogoutOrb();
+			default: return false;
+		}
 	}
 
 	@Subscribe
@@ -448,7 +480,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private void applyConfiguredOrbChanges()
 	{
-		if (config.hideWorldMapTooltip())
+		if (config.manageWorldMapOrb() && config.hideWorldMapTooltip())
 		{
 			widgetTransformer.hideWidget(WORLDMAP_TOOLTIP);
 		}

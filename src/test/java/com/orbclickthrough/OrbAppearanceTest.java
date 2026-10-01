@@ -12,8 +12,6 @@ import net.runelite.api.events.ClientTick;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
 import org.junit.Test;
-import net.runelite.client.ui.overlay.tooltip.Tooltip;
-import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -107,9 +105,6 @@ public class OrbAppearanceTest
                 plugin.onBeforeRender(new BeforeRender());
                 verify(mockedTransformer, times(active ? 1 : 0)).applyTransparency(65);
                 verify(mockedTransformer, times(active ? 1 : 0)).suppressHoverEffects();
-                assertEquals(active, plugin.shouldHideHoverTooltips());
-                when(config.disableHoverEffects()).thenReturn(false);
-                assertFalse(plugin.shouldHideHoverTooltips());
                 plugin.onClientTick(new ClientTick());
                 verify(mockedTransformer).restoreTransparency();
                 verify(mockedTransformer).restoreHoverEffects();
@@ -162,20 +157,6 @@ public class OrbAppearanceTest
         assertFalse(transformer.isMouseOverManagedOrb());
         transformer.suppressHoverEffects();
         verify(client, never()).getWidget(anyInt());
-    }
-
-    @Test
-    public void tooltipOverlayClearsOnlyWhenSuppressionIsActive()
-    {
-        OrbClickthroughPlugin plugin = mock(OrbClickthroughPlugin.class);
-        TooltipManager manager = new TooltipManager();
-        OrbHoverOverlay overlay = new OrbHoverOverlay(plugin, manager);
-        manager.add(new Tooltip("Run energy"));
-        overlay.render(null);
-        assertEquals(1, manager.getTooltips().size());
-        when(plugin.shouldHideHoverTooltips()).thenReturn(true);
-        overlay.render(null);
-        assertTrue(manager.getTooltips().isEmpty());
     }
 
     static void set(Object target, String name, Object value) throws Exception

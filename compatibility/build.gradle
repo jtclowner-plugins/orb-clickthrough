@@ -1,0 +1,87 @@
+// Opt-in development client. Patched third-party sources are test-only and never
+// enter the production Orb Clickthrough jar or change installed plugins.
+def manifestFile = file('compatibility/manifest.json')
+def manifest = new groovy.json.JsonSlurper().parse(manifestFile)
+def patchFiles = manifest.repositories.collect { file("compatibility/${it.patch}") }
+def digest = java.security.MessageDigest.getInstance('SHA-256')
+digest.update(manifestFile.bytes)
+patchFiles.each { digest.update(it.bytes) }
+def key = digest.digest().encodeHex().toString().substring(0, 16)
+def prepared = layout.buildDirectory.dir("orb-compat/${key}").get().asFile
+def sources = new File(prepared, 'sources')
+def resources = new File(prepared, 'resources')
+
+dependencies {
+    testCompileOnly 'org.projectlombok:lombok:1.18.30'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
+}
+
+sourceSets.test.java.srcDir(sources)
+sourceSets.test.java.srcDir('compatibility/tests')
+sourceSets.test.resources.srcDir(resources)
+
+def prepare = tasks.register('prepareCompatibility') {
+    description = 'Fetch pinned companion sources and apply the reviewed compatibility patches for local testing.'
+    inputs.file(manifestFile)
+    inputs.files(patchFiles)
+    outputs.dir(sources)
+    outputs.dir(resources)
+    doLast {
+        sources.mkdirs()
+        resources.mkdirs()
+        manifest.repositories.each { entry ->
+            def checkout = new File(prepared, "repos/${entry.name}")
+            def ready = new File(checkout, '.orb-compat-ready')
+            def patch = file("compatibility/${entry.patch}")
+            if (!ready.exists()) {
+                checkout.mkdirs()
+                exec { workingDir checkout; commandLine 'git', 'init', '--quiet' }
+                exec { workingDir checkout; commandLine 'git', 'fetch', '--quiet', '--depth=1', entry.url, entry.revision }
+                exec { workingDir checkout; commandLine 'git', 'checkout', '--quiet', '--detach', 'FETCH_HEAD' }
+                // A prior interrupted run might already have applied the patch.
+                def alreadyApplied = exec {
+                    workingDir checkout
+                    commandLine 'git', 'apply', '--reverse', '--check', patch.absolutePath
+                    ignoreExitValue true
+                    standardOutput = new ByteArrayOutputStream()
+                    errorOutput = new ByteArrayOutputStream()
+                }.exitValue == 0
+                if (!alreadyApplied) {
+                    exec { workingDir checkout; commandLine 'git', 'apply', '--check', patch.absolutePath }
+                    exec { workingDir checkout; commandLine 'git', 'apply', patch.absolutePath }
+                }
+                ready.text = entry.revision
+            }
+            copy {
+                from(new File(checkout, entry.javaRoot)) { include entry.includes }
+                into sources
+            }
+            if (entry.resourceRoot) {
+                copy { from new File(checkout, entry.resourceRoot); into resources }
+            }
+        }
+    }
+}
+
+tasks.named('compileTestJava') { dependsOn prepare }
+tasks.named('processTestResources') { dependsOn prepare }
+
+// Local source overrides and signed release classes cannot share a Java package.
+// Make an unsigned development copy under build/; never modify the cached release.
+def clientJar = providers.provider {
+    configurations.testRuntimeClasspath.files.find { it.name == "client-${manifest.runeliteVersion}.jar" }
+}
+def devClient = tasks.register('compatibilityClientJar', Jar) {
+    archiveFileName = 'client-local-compatibility.jar'
+    destinationDirectory = layout.buildDirectory.dir('orb-compat/client')
+    from { zipTree(clientJar.get()) }
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'META-INF/INDEX.LIST'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+def developmentClasspath = files(sourceSets.test.runtimeClasspath.filter { it != clientJar.get() }, devClient)
+tasks.named('test') { classpath = developmentClasspath }
+tasks.named('run') { classpath = developmentClasspath }
+
+// A distributable fat jar of these third-party development overrides is not a
+// plugin release. Test locally through `run -Pcompatibility` instead.
+tasks.named('shadowJar') { enabled = false }

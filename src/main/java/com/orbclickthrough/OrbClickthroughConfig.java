@@ -60,6 +60,30 @@ public interface OrbClickthroughConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "fadePluginOverlays",
+			name = "Fade plugin-created orb overlays",
+			description = "Apply click-through transparency to supported plugin visuals, such as the Prayer flick indicator and Regeneration Meter's special-attack ring. Requires compatible plugin versions.",
+			section = miscSection,
+			position = 3
+	)
+	default boolean fadePluginOverlays()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = "suppressPluginTooltips",
+			name = "Suppress plugin-created orb tooltips",
+			description = "Hide supported plugins' tooltips for selected click-through orbs. Mouse tooltips for NPCs and objects underneath remain visible. Requires compatible plugin versions.",
+			section = miscSection,
+			position = 4
+	)
+	default boolean suppressPluginTooltips()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 			keyName = "hotkey",
 			name = "Hotkey",
 			description = "Hotkey used to activate or restore orb clicks. If no hotkey is set, orbs are always click-through.",

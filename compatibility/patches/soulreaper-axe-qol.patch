@@ -1,0 +1,145 @@
+diff --git a/src/main/java/com/soulreaperaxeqol/OrbAppearance.java b/src/main/java/com/soulreaperaxeqol/OrbAppearance.java
+new file mode 100644
+index 0000000..b7fd35a
+--- /dev/null
++++ b/src/main/java/com/soulreaperaxeqol/OrbAppearance.java
+@@ -0,0 +1,65 @@
++package com.soulreaperaxeqol;
++
++import java.awt.AlphaComposite;
++import java.awt.Composite;
++import java.awt.Graphics2D;
++import java.util.Map;
++import java.util.function.BiConsumer;
++import net.runelite.client.eventbus.EventBus;
++import net.runelite.client.events.PluginMessage;
++
++/**
++ * Optional integration using RuneLite's existing synchronous PluginMessage bus.
++ * Copy into a consumer's own package; consumers do not depend on our plugin jar.
++ */
++public final class OrbAppearance
++{
++    private float opacity = 1f;
++    private boolean suppressTooltip;
++
++    private OrbAppearance()
++    {
++    }
++
++    public static OrbAppearance query(EventBus eventBus, String orb)
++    {
++        OrbAppearance appearance = new OrbAppearance();
++        BiConsumer<Float, Boolean> reply = (opacity, suppressTooltip) -> {
++            if (opacity != null && Float.isFinite(opacity))
++            {
++                appearance.opacity = Math.max(0f, Math.min(1f, opacity));
++            }
++            appearance.suppressTooltip = Boolean.TRUE.equals(suppressTooltip);
++        };
++        eventBus.post(new PluginMessage("orbclickthrough", "appearance-v1",
++                Map.of("orb", orb, "reply", reply)));
++        return appearance;
++    }
++
++    public float getOpacity()
++    {
++        return opacity;
++    }
++
++    public boolean suppressTooltip()
++    {
++        return suppressTooltip;
++    }
++
++    /** Caller must dispose the returned graphics. The input graphics is untouched. */
++    public Graphics2D createGraphics(Graphics2D original)
++    {
++        Graphics2D graphics = (Graphics2D) original.create();
++        Composite composite = graphics.getComposite();
++        if (composite instanceof AlphaComposite)
++        {
++            AlphaComposite alpha = (AlphaComposite) composite;
++            graphics.setComposite(alpha.derive(alpha.getAlpha() * opacity));
++        }
++        else if (opacity < 1f)
++        {
++            graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
++        }
++        return graphics;
++    }
++}
+diff --git a/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLExtraOrbOverlay.java b/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLExtraOrbOverlay.java
+index 4ff25f5..a14e34d 100644
+--- a/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLExtraOrbOverlay.java
++++ b/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLExtraOrbOverlay.java
+@@ -21,6 +21,7 @@ import net.runelite.client.config.ConfigManager;
+ import net.runelite.client.ui.overlay.Overlay;
+ import net.runelite.client.ui.overlay.OverlayLayer;
+ import net.runelite.client.ui.overlay.OverlayPosition;
++import net.runelite.client.eventbus.EventBus;
+ import net.runelite.client.ui.FontManager;
+ 
+ import java.awt.image.BufferedImage;
+@@ -30,6 +31,8 @@ import static com.soulreaperaxeqol.SoulreaperAxeQoLConstants.*;
+ 
+ @Slf4j
+ public class SoulreaperAxeQoLExtraOrbOverlay extends Overlay {
++    @Inject
++    private EventBus eventBus;
+     private static final int ANCHOR_OFFSET_X = 12;
+ 
+     private static final double CIRCLE_SHADOW_DIAMETER = 33D;
+@@ -182,6 +185,15 @@ public class SoulreaperAxeQoLExtraOrbOverlay extends Overlay {
+ 
+     @Override
+     public Dimension render(Graphics2D g) {
++        Graphics2D orbGraphics = OrbAppearance.query(eventBus, "special").createGraphics(g);
++        try {
++            return renderOrb(orbGraphics);
++        } finally {
++            orbGraphics.dispose();
++        }
++    }
++
++    private Dimension renderOrb(Graphics2D g) {
+         // hide minimap orb when Soulreaper Axe not equipped and no stacks are remaining
+         if (!plugin.isSoulreaperAxeEquipped() && plugin.getSoulreaperStackCount() == 0) return null;
+ 
+diff --git a/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLNativeOrbOverlay.java b/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLNativeOrbOverlay.java
+index c0e625d..1c46fff 100644
+--- a/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLNativeOrbOverlay.java
++++ b/src/main/java/com/soulreaperaxeqol/SoulreaperAxeQoLNativeOrbOverlay.java
+@@ -20,6 +20,7 @@ import net.runelite.client.config.ConfigManager;
+ import net.runelite.client.ui.overlay.Overlay;
+ import net.runelite.client.ui.overlay.OverlayLayer;
+ import net.runelite.client.ui.overlay.OverlayPosition;
++import net.runelite.client.eventbus.EventBus;
+ 
+ import java.awt.image.BufferedImage;
+ import java.util.Objects;
+@@ -28,6 +29,8 @@ import static com.soulreaperaxeqol.SoulreaperAxeQoLConstants.*;
+ 
+ @Slf4j
+ public class SoulreaperAxeQoLNativeOrbOverlay extends Overlay {
++    @Inject
++    private EventBus eventBus;
+     private static final int ANCHOR_OFFSET_X = 12;
+ 
+     private static final double INNER_CIRCLE_DIAMETER = 26D;
+@@ -110,6 +113,15 @@ public class SoulreaperAxeQoLNativeOrbOverlay extends Overlay {
+ 
+     @Override
+     public Dimension render(Graphics2D g) {
++        Graphics2D orbGraphics = OrbAppearance.query(eventBus, "special").createGraphics(g);
++        try {
++            return renderOrb(orbGraphics);
++        } finally {
++            orbGraphics.dispose();
++        }
++    }
++
++    private Dimension renderOrb(Graphics2D g) {
+         if (!plugin.isSoulreaperAxeEquipped()) return null;
+ 
+         loadSpecOrbImage();

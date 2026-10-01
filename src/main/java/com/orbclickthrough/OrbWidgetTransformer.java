@@ -188,8 +188,6 @@ public class OrbWidgetTransformer
         {
             hideHoverTooltip(client.getWidget(InterfaceID.Orbs.TOOLTIP));
             hideHoverTooltip(client.getWidget(InterfaceID.Orbs.WORLDMAP_TOOLTIP));
-            hideHoverTooltip(client.getWidget(InterfaceID.ToplevelPreEoc.MOUSEOVER));
-            hideHoverTooltip(client.getWidget(InterfaceID.ToplevelOsrsStretch.MOUSEOVER));
         }
     }
 
