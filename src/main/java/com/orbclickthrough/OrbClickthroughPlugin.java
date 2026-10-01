@@ -190,7 +190,7 @@ public class OrbClickthroughPlugin extends Plugin
 	private OrbWidgetTransformer widgetTransformer;
 
 	@Inject
-	private OrbTooltipCompatibility tooltipCompatibility;
+	private OrbOverlayCompatibility overlayCompatibility;
 
 	private HotkeyListener hotkeyListener;
 	private boolean running;
@@ -253,7 +253,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 		clientThread.invokeLater(() ->
 		{
-			tooltipCompatibility.stop();
+			overlayCompatibility.stop();
 			widgetTransformer.restoreEverythingChangedByUs();
 			hotkeyHeld = false;
 			toggleActive = false;
@@ -343,11 +343,11 @@ public class OrbClickthroughPlugin extends Plugin
 	{
 		if (running)
 		{
-			tooltipCompatibility.sync();
+			overlayCompatibility.sync();
 		}
 		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
 		{
-			if (config.disableHoverEffects())
+			if (config.suppressOrbTooltips())
 			{
 				widgetTransformer.suppressHoverEffects();
 			}
@@ -358,7 +358,14 @@ public class OrbClickthroughPlugin extends Plugin
 	boolean suppressPluginTooltip(String orb)
 	{
 		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
-				&& managesOrb(orb) && config.suppressPluginTooltips();
+				&& managesOrb(orb) && config.suppressOrbTooltips();
+	}
+
+	float pluginOverlayOpacity(String orb)
+	{
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
+				&& managesOrb(orb) && config.fadePluginOverlays()
+				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
 	}
 
 	private boolean managesOrb(String orb)
@@ -468,7 +475,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private void applyConfiguredOrbChanges()
 	{
-		if (config.manageWorldMapOrb() && config.hideWorldMapTooltip())
+		if (config.manageWorldMapOrb() && config.suppressOrbTooltips())
 		{
 			widgetTransformer.hideWidget(WORLDMAP_TOOLTIP);
 		}

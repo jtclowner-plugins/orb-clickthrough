@@ -93,7 +93,7 @@ public class OrbAppearanceTest
                 OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
                 when(config.activationMode()).thenReturn(mode);
                 when(config.clickThroughTransparency()).thenReturn(65);
-                when(config.disableHoverEffects()).thenReturn(true);
+                when(config.suppressOrbTooltips()).thenReturn(true);
                 OrbWidgetTransformer mockedTransformer = mock(OrbWidgetTransformer.class);
                 when(mockedTransformer.isMouseOverManagedOrb()).thenReturn(true);
                 OrbClickthroughPlugin plugin = new OrbClickthroughPlugin();

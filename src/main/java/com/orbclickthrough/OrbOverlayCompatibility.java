@@ -18,21 +18,23 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.tooltip.Tooltip;
 import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
-/** Adapters for inspected, unmodified tooltip producers. No foreign fields or config are changed. */
+/** Adapters for inspected, unmodified orb overlays. Uses public overlay registration APIs only. */
 @Singleton
-class OrbTooltipCompatibility
+class OrbOverlayCompatibility
 {
     private final OverlayManager overlays;
     private final TooltipManager tooltips;
     private final OrbClickthroughPlugin plugin;
+    private final OrbOverlayRenderer renderer;
     private final Map<Overlay, Adapter> adapters = new IdentityHashMap<>();
 
     @Inject
-    OrbTooltipCompatibility(OverlayManager overlays, TooltipManager tooltips, OrbClickthroughPlugin plugin)
+    OrbOverlayCompatibility(OverlayManager overlays, TooltipManager tooltips, OrbClickthroughPlugin plugin, OrbOverlayRenderer renderer)
     {
         this.overlays = overlays;
         this.tooltips = tooltips;
         this.plugin = plugin;
+        this.renderer = renderer;
     }
 
     void sync()
@@ -55,7 +57,7 @@ class OrbTooltipCompatibility
         {
             String orb = orbFor(overlay.getClass().getName());
             if (orb == null || adapters.containsKey(overlay) || !overlay.getDrawHooks().isEmpty()
-                || (overlay.getPosition() != OverlayPosition.DYNAMIC && overlay.getPosition() != OverlayPosition.TOOLTIP)
+                || (overlay.getPosition() != OverlayPosition.DYNAMIC && overlay.getPosition() != OverlayPosition.TOOLTIP && overlay.getPosition() != OverlayPosition.DETACHED)
                 || overlay.getLayer() == OverlayLayer.MANUAL)
             {
                 continue;
@@ -75,9 +77,14 @@ class OrbTooltipCompatibility
         switch (className)
         {
             case "net.runelite.client.plugins.prayer.PrayerDoseOverlay":
+            case "net.runelite.client.plugins.prayer.PrayerFlickOverlay":
             case "io.hydrox.quickprayerpreview.QuickPrayerPreviewOverlay": return "prayer";
             case "net.runelite.client.plugins.runenergy.RunEnergyOverlay": return "run";
-            case "net.runelite.client.plugins.poison.PoisonOverlay": return "health";
+            case "net.runelite.client.plugins.poison.PoisonOverlay":
+            case "com.github.corhen.poisonring.PoisonRingOverlay": return "health";
+            case "com.soulreaperaxeqol.SoulreaperAxeQoLNativeOrbOverlay":
+            case "com.soulreaperaxeqol.SoulreaperAxeQoLExtraOrbOverlay": return "special";
+            case "net.runelite.client.plugins.regenmeter.RegenMeterOverlay": return "regeneration";
             default: return null;
         }
     }
@@ -120,6 +127,12 @@ class OrbTooltipCompatibility
         }
 
         @Override
+        public String getName()
+        {
+            return original.getName();
+        }
+
+        @Override
         public Dimension render(Graphics2D graphics)
         {
             // Owner may have stopped after sync(), before this rendering pass.
@@ -141,7 +154,9 @@ class OrbTooltipCompatibility
             }
             try
             {
-                Dimension size = original.render(graphics);
+                Dimension size = renderer.render(original, graphics, orb,
+                    directTooltip ? 1f : plugin.pluginOverlayOpacity(orb),
+                    plugin.pluginOverlayOpacity("health"), plugin.pluginOverlayOpacity("special"));
                 original.getBounds().setSize(size == null ? new Dimension() : size);
                 return size;
             }

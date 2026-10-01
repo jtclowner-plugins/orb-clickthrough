@@ -29,7 +29,7 @@ public class OrbClickthroughTest
 		assertTrue(config.manageWikiOrb());
 		assertTrue(config.manageStoreOrb());
 
-		assertTrue(config.hideWorldMapTooltip());
+		assertTrue(config.suppressOrbTooltips());
 	}
 
 	@Test

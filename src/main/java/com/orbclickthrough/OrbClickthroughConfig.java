@@ -48,25 +48,25 @@ public interface OrbClickthroughConfig extends Config
 	}
 
 	@ConfigItem(
-			keyName = "disableHoverEffects",
-			name = "Disable click-through hover effects",
-			description = "Hide orb hover highlights and tooltips while hovering a selected click-through orb.",
+			keyName = "suppressPluginTooltips",
+			name = "Suppress orb tooltips",
+			description = "Suppress native and supported plugin tooltips and native hover highlights for selected click-through orbs. Unrelated mouse tooltips remain visible.",
 			section = miscSection,
 			position = 2
 	)
-	default boolean disableHoverEffects()
+	default boolean suppressOrbTooltips()
 	{
-		return false;
+		return true;
 	}
 
 	@ConfigItem(
-			keyName = "suppressPluginTooltips",
-			name = "Suppress plugin-created orb tooltips",
-			description = "Suppress Prayer, Run Energy, Poison and Quick Prayer Preview tooltips for selected click-through orbs. Other mouse tooltips remain visible.",
+			keyName = "fadePluginOverlays",
+			name = "Fade plugin-created orb overlays",
+			description = "Apply click-through transparency to supported orb visuals, including Prayer's flick indicator, Soulreaper Axe QoL orbs and Regeneration Meter rings.",
 			section = miscSection,
-			position = 4
+			position = 3
 	)
-	default boolean suppressPluginTooltips()
+	default boolean fadePluginOverlays()
 	{
 		return true;
 	}
@@ -227,15 +227,4 @@ public interface OrbClickthroughConfig extends Config
 		return false;
 	}
 
-	@ConfigItem(
-			keyName = "hideWorldMapTooltip",
-			name = "Hide World Map tooltip",
-			description = "Hide the World Map hover tooltip while orb click-through is active.",
-			section = miscSection,
-			position = 0
-	)
-	default boolean hideWorldMapTooltip()
-	{
-		return true;
-	}
 }

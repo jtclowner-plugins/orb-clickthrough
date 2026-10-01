@@ -27,13 +27,14 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 /** Executes the unmodified companion overlays, not look-alike test implementations. */
-public class OrbTooltipCompatibilityTest
+public class OrbOverlayCompatibilityTest
 {
     private final Client client = mock(Client.class);
     private final OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
     private final net.runelite.client.ui.overlay.OverlayManager manager = mock(net.runelite.client.ui.overlay.OverlayManager.class);
     private final java.util.ArrayList<Overlay> registered = new java.util.ArrayList<>();
-    private OrbTooltipCompatibility compatibility;
+    private OrbOverlayCompatibility compatibility;
+    private final ConfigManager otherConfigs = mock(ConfigManager.class);
     private final TooltipManager tooltips = new TooltipManager();
     private final OrbClickthroughPlugin provider = new OrbClickthroughPlugin();
 
@@ -49,8 +50,9 @@ public class OrbTooltipCompatibilityTest
         when(config.managePrayerOrb()).thenReturn(true);
         when(config.manageRunOrb()).thenReturn(true);
         when(config.manageSpecialAttackOrb()).thenReturn(true);
-        when(config.suppressPluginTooltips()).thenReturn(true);
+        when(config.suppressOrbTooltips()).thenReturn(true);
         when(config.clickThroughTransparency()).thenReturn(50);
+        when(config.fadePluginOverlays()).thenReturn(true);
         when(client.getMouseCanvasPosition()).thenReturn(new Point(115, 115));
         when(client.getCanvasWidth()).thenReturn(400);
         when(client.getCanvasHeight()).thenReturn(250);
@@ -60,7 +62,7 @@ public class OrbTooltipCompatibilityTest
         when(manager.anyMatch(any())).thenAnswer(i -> registered.stream().anyMatch(i.getArgument(0)));
         when(manager.add(any())).thenAnswer(i -> registered.add(i.getArgument(0)));
         when(manager.remove(any())).thenAnswer(i -> registered.remove((Object) i.getArgument(0)));
-        compatibility = new OrbTooltipCompatibility(manager, tooltips, provider);
+        compatibility = new OrbOverlayCompatibility(manager, tooltips, provider, new OrbOverlayRenderer(client, otherConfigs));
     }
 
     @Test
@@ -84,11 +86,11 @@ public class OrbTooltipCompatibilityTest
             assertEquals(1, tooltips.getTooltips().size());
             String attack = tooltips.getTooltips().get(0).getText();
             assertTrue(attack.contains("Attack"));
-            when(config.suppressPluginTooltips()).thenReturn(true);
+            when(config.suppressOrbTooltips()).thenReturn(true);
             render(overlay);
             assertEquals(overlay.getClass().getName(), 1, tooltips.getTooltips().size());
             assertEquals(attack, tooltips.getTooltips().get(0).getText());
-            when(config.suppressPluginTooltips()).thenReturn(false);
+            when(config.suppressOrbTooltips()).thenReturn(false);
             render(overlay);
             assertEquals(overlay.getClass().getName(), 2, tooltips.getTooltips().size());
         }
@@ -114,10 +116,10 @@ public class OrbTooltipCompatibilityTest
                     defaults("net.runelite.client.config.RuneLiteConfig", Map.of("tooltipPosition", TooltipPositionType.UNDER_CURSOR)), tooltips);
             tooltips.clear();
             addActualNpcMouseTooltip();
-            when(config.suppressPluginTooltips()).thenReturn(true);
+            when(config.suppressOrbTooltips()).thenReturn(true);
             assertEquals(0, alphaSum(render(preview)));
             assertEquals(1, tooltips.getTooltips().size());
-            when(config.suppressPluginTooltips()).thenReturn(false);
+            when(config.suppressOrbTooltips()).thenReturn(false);
             BufferedImage shown = render(preview);
             if (mode.toString().equals("WITH_OTHERS"))
             {
@@ -158,7 +160,8 @@ public class OrbTooltipCompatibilityTest
     @Test
     public void modesSelectionsLogoutAndSettingControlSuppression() throws Exception
     {
-        assertTrue(new OrbClickthroughConfig() {}.suppressPluginTooltips());
+        assertTrue(new OrbClickthroughConfig() {}.suppressOrbTooltips());
+        assertTrue(new OrbClickthroughConfig() {}.fadePluginOverlays());
         for (OrbClickthroughActivationMode mode : OrbClickthroughActivationMode.values())
         {
             when(config.activationMode()).thenReturn(mode);
@@ -167,15 +170,16 @@ public class OrbTooltipCompatibilityTest
                 field(provider, "hotkeyHeld", mode == OrbClickthroughActivationMode.HOLD_TO_RESTORE_CLICKS ? !active : active);
                 field(provider, "toggleActive", active);
                 assertEquals(active, provider.suppressPluginTooltip("prayer"));
+                assertEquals(active ? .5f : 1f, provider.pluginOverlayOpacity("prayer"), 0f);
                 assertFalse(provider.suppressPluginTooltip("unknown"));
             }
         }
         when(config.managePrayerOrb()).thenReturn(false);
         assertFalse(provider.suppressPluginTooltip("prayer"));
         when(config.managePrayerOrb()).thenReturn(true);
-        when(config.suppressPluginTooltips()).thenReturn(false);
+        when(config.suppressOrbTooltips()).thenReturn(false);
         assertFalse(provider.suppressPluginTooltip("prayer"));
-        when(config.suppressPluginTooltips()).thenReturn(true);
+        when(config.suppressOrbTooltips()).thenReturn(true);
         when(client.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
         assertFalse(provider.suppressPluginTooltip("prayer"));
         when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
@@ -199,7 +203,7 @@ public class OrbTooltipCompatibilityTest
         };
         producer.setLayer(net.runelite.client.ui.overlay.OverlayLayer.ABOVE_WIDGETS);
         registered.add(producer);
-        OrbTooltipCompatibility.Adapter adapter = compatibility.new Adapter(producer, "prayer", false);
+        OrbOverlayCompatibility.Adapter adapter = compatibility.new Adapter(producer, "prayer", false);
         producer.setLayer(net.runelite.client.ui.overlay.OverlayLayer.MANUAL);
         for (String text : List.of("Attack Goblin", "Talk-to Banker", "Take Coins", "Open Door", "Time Remaining: arbitrary unrelated tooltip"))
         {
@@ -223,7 +227,7 @@ public class OrbTooltipCompatibilityTest
         }
         assertEquals(original, tooltips.getTooltips());
         assertTrue(alphaSum(image) > 0);
-        assertNull(OrbTooltipCompatibility.orbFor("net.runelite.client.plugins.mousehighlight.MouseHighlightOverlay"));
+        assertNull(OrbOverlayCompatibility.orbFor("net.runelite.client.plugins.mousehighlight.MouseHighlightOverlay"));
     }
 
     @Test
@@ -241,7 +245,7 @@ public class OrbTooltipCompatibilityTest
         when(client.getRealSkillLevel(net.runelite.api.Skill.PRAYER)).thenReturn(99);
         when(client.getBoostedSkillLevel(net.runelite.api.Skill.PRAYER)).thenReturn(10);
         real.add(original);
-        OrbTooltipCompatibility integration = new OrbTooltipCompatibility(real, tooltips, provider);
+        OrbOverlayCompatibility integration = new OrbOverlayCompatibility(real, tooltips, provider, new OrbOverlayRenderer(client, otherConfigs));
         integration.sync();
         java.lang.reflect.Method getLayer = real.getClass().getDeclaredMethod("getLayer", net.runelite.client.ui.overlay.OverlayLayer.class);
         getLayer.setAccessible(true);
@@ -250,7 +254,7 @@ public class OrbTooltipCompatibilityTest
         mapField.setAccessible(true);
         com.google.common.collect.Multimap<?, Overlay> map = (com.google.common.collect.Multimap<?, Overlay>) mapField.get(real);
         assertFalse(map.values().contains(original));
-        Overlay adapter = map.values().stream().filter(o -> o instanceof OrbTooltipCompatibility.Adapter).findFirst().orElseThrow(AssertionError::new);
+        Overlay adapter = map.values().stream().filter(o -> o instanceof OrbOverlayCompatibility.Adapter).findFirst().orElseThrow(AssertionError::new);
         assertTrue(alphaSum(render(adapter)) > 0);
         assertTrue(tooltips.getTooltips().isEmpty());
         integration.stop();
@@ -259,6 +263,155 @@ public class OrbTooltipCompatibilityTest
         assertFalse(map.values().contains(adapter));
         render(original);
         assertEquals(1, tooltips.getTooltips().size());
+    }
+
+    @Test
+    public void prayerFlickIndicatorFadesAndUnselectedOrbIsUnaffected() throws Exception
+    {
+        Object location = Class.forName("net.runelite.client.plugins.prayer.PrayerFlickLocation").getEnumConstants()[1];
+        Overlay flick = overlay("net.runelite.client.plugins.prayer.PrayerFlickOverlay", client,
+                defaults("net.runelite.client.plugins.prayer.PrayerConfig", Map.of("prayerFlickLocation", location, "prayerFlickColor", Color.BLUE)),
+                stub("net.runelite.client.plugins.prayer.PrayerPlugin", Map.of("isPrayersActive", true, "getTickProgress", .5d)));
+        assertFades(flick);
+        when(config.managePrayerOrb()).thenReturn(false);
+        when(config.clickThroughTransparency()).thenReturn(100);
+        assertTrue(alphaSum(render(flick)) > 0);
+    }
+
+    @Test
+    public void regenerationMeterTreatsHpAndSpecIndependently() throws Exception
+    {
+        Overlay regen = overlay("net.runelite.client.plugins.regenmeter.RegenMeterOverlay", client,
+                stub("net.runelite.client.plugins.regenmeter.RegenMeterPlugin", Map.of("getHitpointsPercentage", .5d, "getSpecialPercentage", .5d)),
+                defaults("net.runelite.client.plugins.regenmeter.RegenMeterConfig", Map.of("showHitpoints", true, "showSpecial", true)));
+        Widget spec = mock(Widget.class);
+        when(spec.getBounds()).thenReturn(new Rectangle(240, 100, 56, 30));
+        when(client.getWidget(InterfaceID.Orbs.ORB_SPECENERGY)).thenReturn(spec);
+        assertFades(regen);
+        when(config.manageHealthOrb()).thenReturn(false);
+        when(config.clickThroughTransparency()).thenReturn(100);
+        BufferedImage image = render(regen);
+        assertTrue(alphaSum(image.getSubimage(90, 90, 90, 60)) > 0);
+        assertEquals(0, alphaSum(image.getSubimage(230, 90, 90, 60)));
+    }
+
+    @Test
+    public void soulreaperNativeDuplicateAndTextVariantsFade() throws Exception
+    {
+        Object plugin = stub("com.soulreaperaxeqol.SoulreaperAxeQoLPlugin", Map.of(
+                "isSoulreaperAxeEquipped", true, "getSpecialAttackPercent", 50,
+                "getSoulreaperStackCount", 3, "getSpecRegenProgress", .5d, "getSoulreaperRegenProgress", .5d));
+        for (boolean text : new boolean[]{false, true})
+        {
+            Object settings = defaults("com.soulreaperaxeqol.SoulreaperAxeQoLConfig", Map.of("showTextOnOrb", text));
+            for (String name : new String[]{"SoulreaperAxeQoLNativeOrbOverlay", "SoulreaperAxeQoLExtraOrbOverlay"})
+            {
+                assertFades(overlay("com.soulreaperaxeqol." + name, client, plugin, settings, mock(ConfigManager.class)));
+            }
+        }
+    }
+
+    @Test
+    public void poisonRingFades() throws Exception
+    {
+        Overlay ring = overlay("com.github.corhen.poisonring.PoisonRingOverlay", client,
+                stub("com.github.corhen.poisonring.PoisonRingPlugin", Map.of("isPoisoned", true, "getTicksUntilDamage", 15, "getPoisonTickRate", 30)),
+                defaults("com.github.corhen.poisonring.PoisonRingConfig", Map.of()));
+        assertFades(ring);
+    }
+
+    private void assertFades(Overlay overlay)
+    {
+        when(config.clickThroughTransparency()).thenReturn(0);
+        long normal = alphaSum(render(overlay));
+        assertTrue(overlay.getClass().getName(), normal > 0);
+        when(config.clickThroughTransparency()).thenReturn(50);
+        BufferedImage fadedImage = render(overlay);
+        long faded = alphaSum(fadedImage);
+        if (!overlay.getName().equals("RegenMeterOverlay"))
+        {
+            // A layered replacement orb must be 50% transparent as a whole, not
+            // become opaque again where its fills, sprite and text overlap.
+            for (int y = 0; y < fadedImage.getHeight(); y++)
+                for (int x = 0; x < fadedImage.getWidth(); x++)
+                    assertTrue((fadedImage.getRGB(x, y) >>> 24) <= 128);
+        }
+        assertTrue(overlay.getClass().getName(), faded > 0 && faded < normal);
+        when(config.clickThroughTransparency()).thenReturn(100);
+        assertEquals(overlay.getClass().getName(), 0, alphaSum(render(overlay)));
+        when(config.fadePluginOverlays()).thenReturn(false);
+        assertEquals(normal, alphaSum(render(overlay)));
+        when(config.fadePluginOverlays()).thenReturn(true);
+    }
+
+    @Test
+    public void regenerationStrokesRemainIndependentWhenOrbsOverlap() throws Exception
+    {
+        Object regenPlugin = stub("net.runelite.client.plugins.regenmeter.RegenMeterPlugin",
+            Map.of("getHitpointsPercentage", .5d, "getSpecialPercentage", .25d));
+        Overlay regen = overlay("net.runelite.client.plugins.regenmeter.RegenMeterOverlay", client, regenPlugin,
+            defaults("net.runelite.client.plugins.regenmeter.RegenMeterConfig", Map.of("showHitpoints", true, "showSpecial", true)));
+        Overlay healthOnly = construct("net.runelite.client.plugins.regenmeter.RegenMeterOverlay", client, regenPlugin,
+            defaults("net.runelite.client.plugins.regenmeter.RegenMeterConfig", Map.of("showHitpoints", true, "showSpecial", false)));
+        when(config.manageHealthOrb()).thenReturn(false);
+        when(config.clickThroughTransparency()).thenReturn(100);
+        BufferedImage expected = render(healthOnly);
+        BufferedImage actual = render(regen);
+        assertArrayEquals(expected.getRGB(0, 0, 400, 250, null, 0, 400), actual.getRGB(0, 0, 400, 250, null, 0, 400));
+    }
+
+    @Test
+    public void soulreaperOffsetLayerChangesAndTooltipToggleDoNotBreakFading() throws Exception
+    {
+        when(otherConfigs.getConfiguration("soulreaperaxeqol", "offsetX", Integer.class)).thenReturn(160);
+        when(otherConfigs.getConfiguration("soulreaperaxeqol", "offsetY", Integer.class)).thenReturn(80);
+        Overlay extra = overlay("com.soulreaperaxeqol.SoulreaperAxeQoLExtraOrbOverlay", client,
+            stub("com.soulreaperaxeqol.SoulreaperAxeQoLPlugin", Map.of("isSoulreaperAxeEquipped", true,
+                "getSpecialAttackPercent", 50, "getSoulreaperStackCount", 3, "getSpecRegenProgress", .5d)),
+            defaults("com.soulreaperaxeqol.SoulreaperAxeQoLConfig", Map.of("getOffsetX", 160, "getOffsetY", 80)), otherConfigs);
+        when(config.suppressOrbTooltips()).thenReturn(false);
+        assertFades(extra);
+        Overlay original = registered.get(0);
+        original.setLayer(net.runelite.client.ui.overlay.OverlayLayer.UNDER_WIDGETS);
+        compatibility.sync();
+        assertFalse(registered.contains(extra));
+        Overlay replacement = registered.stream().filter(o -> o instanceof OrbOverlayCompatibility.Adapter).findFirst().orElseThrow(AssertionError::new);
+        assertEquals(net.runelite.client.ui.overlay.OverlayLayer.UNDER_WIDGETS, replacement.getLayer());
+        assertFades(replacement);
+        compatibility.stop();
+        assertEquals(net.runelite.client.ui.overlay.OverlayLayer.UNDER_WIDGETS, original.getLayer());
+    }
+
+    @Test
+    public void fadingPreservesTransformClipAndSharedComposite() throws Exception
+    {
+        Object location = Class.forName("net.runelite.client.plugins.prayer.PrayerFlickLocation").getEnumConstants()[1];
+        Overlay flick = overlay("net.runelite.client.plugins.prayer.PrayerFlickOverlay", client,
+            defaults("net.runelite.client.plugins.prayer.PrayerConfig", Map.of("prayerFlickLocation", location, "prayerFlickColor", Color.BLUE)),
+            stub("net.runelite.client.plugins.prayer.PrayerPlugin", Map.of("isPrayersActive", true, "getTickProgress", .5d)));
+        BufferedImage image = new BufferedImage(400, 250, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.translate(20, 10);
+        graphics.scale(1.25, 1.25);
+        graphics.clipRect(0, 0, 300, 180);
+        graphics.setComposite(java.awt.AlphaComposite.SrcOver.derive(.5f));
+        java.awt.geom.AffineTransform transform = graphics.getTransform();
+        Rectangle clip = graphics.getClipBounds();
+        try
+        {
+            flick.render(graphics);
+            assertEquals(transform, graphics.getTransform());
+            assertEquals(clip, graphics.getClipBounds());
+            assertEquals(.5f, ((java.awt.AlphaComposite) graphics.getComposite()).getAlpha(), 0f);
+        }
+        finally
+        {
+            graphics.dispose();
+        }
+        assertTrue(alphaSum(image) > 0);
+        for (int y = 0; y < 250; y++)
+            for (int x = 0; x < 400; x++)
+                assertTrue((image.getRGB(x, y) >>> 24) <= 64);
     }
 
     private void addActualNpcMouseTooltip() throws Exception
@@ -278,7 +431,7 @@ public class OrbTooltipCompatibilityTest
         Overlay overlay = construct(name, args);
         registered.add(overlay);
         compatibility.sync();
-        return registered.stream().filter(o -> o instanceof OrbTooltipCompatibility.Adapter)
+        return registered.stream().filter(o -> o instanceof OrbOverlayCompatibility.Adapter)
             .reduce((first, last) -> last).orElseThrow(AssertionError::new);
     }
 
