@@ -86,7 +86,7 @@ class CompassAppearance
             InterfaceID.Toplevel.MAPCONTAINER_GRAPHIC3);
         if (compass == null || compass.getContentType() != 1339) return;
         Rectangle bounds = new Rectangle(compass.getBounds());
-        bounds.grow(2, 2); // Include the shared frame's outer rim, without touching the minimap surround.
+        bounds.grow(4, 4); // The shared frame's outline/shadow extends beyond the needle's mask.
         circle = new Ellipse2D.Double(bounds.x, bounds.y, bounds.width, bounds.height);
         BufferProvider buffer = client.getBufferProvider();
         if (buffer == null) return;

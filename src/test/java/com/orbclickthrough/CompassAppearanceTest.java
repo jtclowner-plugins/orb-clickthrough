@@ -48,12 +48,14 @@ public class CompassAppearanceTest
                     Arrays.fill(pixels, 0xff224466);
                     appearance.beginFrame();
                     overlays.get(0).render(null); // scene before widgets
-                    for (int y = 28; y < 67; y++)
-                        for (int x = 28; x < 67; x++) pixels[y * 100 + x] = 0xffcc8844;
+                    for (int y = 26; y < 69; y++)
+                        for (int x = 26; x < 69; x++) pixels[y * 100 + x] = 0xffcc8844;
                     overlays.get(1).render(null); // game-drawn compass and shared frame
                     int expectedBackground = resized ? 0xff224466 : (gpu ? 0 : 0xff000000);
                     assertEquals(CompassAppearance.blend(0xffcc8844, expectedBackground, opacity), pixels[47 * 100 + 47]);
-                    assertEquals(0xffcc8844, pixels[28 * 100 + 28]); // outside circular compass
+                    assertEquals(0xffcc8844, pixels[26 * 100 + 26]); // outside circular compass
+                    // Outline/shadow beyond the old needle-mask + two-pixel crop.
+                    assertEquals(CompassAppearance.blend(0xffcc8844, expectedBackground, opacity), pixels[47 * 100 + 27]);
                     assertEquals(0xff224466, pixels[80 * 100 + 80]); // minimap/world outside compass
                     overlays.get(1).render(null);
                     assertEquals(CompassAppearance.blend(0xffcc8844, expectedBackground, opacity), pixels[47 * 100 + 47]);
