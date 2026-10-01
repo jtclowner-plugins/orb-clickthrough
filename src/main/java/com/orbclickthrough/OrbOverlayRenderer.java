@@ -9,9 +9,6 @@ import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
-import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.widgets.Widget;
-import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.overlay.Overlay;
 
 /** Composites each supported orb drawing once, so overlapping fills don't undo its transparency. */
@@ -19,14 +16,13 @@ import net.runelite.client.ui.overlay.Overlay;
 class OrbOverlayRenderer
 {
     private final Client client;
-    private final ConfigManager configs;
     private BufferedImage buffer;
+    private Rectangle dirty;
 
     @Inject
-    OrbOverlayRenderer(Client client, ConfigManager configs)
+    OrbOverlayRenderer(Client client)
     {
         this.client = client;
-        this.configs = configs;
     }
 
     Dimension render(Overlay overlay, Graphics2D graphics, String orb, float opacity, float health, float special)
@@ -47,19 +43,10 @@ class OrbOverlayRenderer
         {
             return overlay.render(graphics);
         }
-        Rectangle region = drawingBounds(overlay.getClass().getName());
-        if (region == null)
-        {
-            // Preserve producer side effects (including tooltips) even with no visible orb.
-            return overlay.render(graphics);
-        }
+        // An overlay can draw beyond its reported bounds or return null after drawing.
+        // Capture the canvas rather than guessing another plugin's offsets or text layout.
         AffineTransform transform = graphics.getTransform();
-        Rectangle device = transform.createTransformedShape(region).getBounds();
-        device = device.intersection(new Rectangle(0, 0, client.getCanvasWidth(), client.getCanvasHeight()));
-        if (graphics.getClip() != null)
-        {
-            device = device.intersection(transform.createTransformedShape(graphics.getClip()).getBounds());
-        }
+        Rectangle device = new Rectangle(0, 0, client.getCanvasWidth(), client.getCanvasHeight());
         if (device.isEmpty())
         {
             // Execute tooltip producers on a disposable surface: some supported overlays
@@ -75,17 +62,18 @@ class OrbOverlayRenderer
                 clipped.dispose();
             }
         }
-        if (buffer == null || buffer.getWidth() < device.width || buffer.getHeight() < device.height)
+        if (buffer == null || buffer.getWidth() != device.width || buffer.getHeight() != device.height)
         {
-            buffer = new BufferedImage(Math.max(device.width, buffer == null ? 0 : buffer.getWidth()),
-                Math.max(device.height, buffer == null ? 0 : buffer.getHeight()), BufferedImage.TYPE_INT_ARGB);
+            buffer = new BufferedImage(device.width, device.height, BufferedImage.TYPE_INT_ARGB);
+            dirty = null;
         }
         Graphics2D offscreen = buffer.createGraphics();
+        DrawingBoundsGraphics2D.Drawing drawing = new DrawingBoundsGraphics2D.Drawing(device);
         Dimension size;
         try
         {
             offscreen.setComposite(AlphaComposite.Clear);
-            offscreen.fillRect(0, 0, device.width, device.height);
+            if (dirty != null) offscreen.fillRect(dirty.x, dirty.y, dirty.width, dirty.height);
             offscreen.setComposite(AlphaComposite.SrcOver);
             offscreen.setRenderingHints(graphics.getRenderingHints());
             offscreen.setFont(graphics.getFont());
@@ -95,12 +83,20 @@ class OrbOverlayRenderer
             offscreen.translate(-device.x, -device.y);
             offscreen.transform(transform);
             offscreen.setClip(graphics.getClip());
-            size = overlay.render(offscreen);
+            size = overlay.render(new DrawingBoundsGraphics2D(offscreen, drawing));
         }
         finally
         {
             offscreen.dispose();
+            dirty = drawing.bounds;
+            if (dirty != null) composite(graphics, dirty, opacity);
         }
+        return size;
+    }
+
+    private void composite(Graphics2D graphics, Rectangle device, float opacity)
+    {
+        if (opacity == 0f) return;
         Graphics2D output = (Graphics2D) graphics.create();
         try
         {
@@ -109,70 +105,18 @@ class OrbOverlayRenderer
             output.setComposite(composite.derive(composite.getAlpha() * opacity));
             output.setTransform(new AffineTransform());
             output.drawImage(buffer, device.x, device.y, device.x + device.width, device.y + device.height,
-                0, 0, device.width, device.height, null);
+                device.x, device.y, device.x + device.width, device.y + device.height, null);
         }
         finally
         {
             output.dispose();
         }
-        return size;
     }
 
-    private Rectangle drawingBounds(String name)
+    void clear()
     {
-        Rectangle bounds;
-        switch (name)
-        {
-            case "net.runelite.client.plugins.prayer.PrayerDoseOverlay":
-            case "net.runelite.client.plugins.prayer.PrayerFlickOverlay":
-                bounds = widgetBounds(InterfaceID.Orbs.PRAYERBUTTON, InterfaceID.OrbsNomap.PRAYERBUTTON);
-                if (bounds != null)
-                {
-                    bounds.add(new Rectangle(bounds.x + 24, bounds.y - 1, bounds.height, bounds.height));
-                    bounds.grow(4, 4);
-                }
-                return bounds;
-            case "com.soulreaperaxeqol.SoulreaperAxeQoLNativeOrbOverlay":
-            case "com.soulreaperaxeqol.SoulreaperAxeQoLExtraOrbOverlay":
-                bounds = widgetBounds(InterfaceID.Orbs.ORB_SPECENERGY, InterfaceID.OrbsNomap.ORB_SPECENERGY);
-                if (bounds != null)
-                {
-                    if (name.endsWith("ExtraOrbOverlay"))
-                    {
-                        bounds.translate(setting("soulreaperaxeqol", "offsetX", 22), setting("soulreaperaxeqol", "offsetY", 25));
-                    }
-                    // Includes the side text, border, icon and antialiased timer strokes.
-                    bounds.grow(64, 32);
-                }
-                return bounds;
-            case "com.github.corhen.poisonring.PoisonRingOverlay":
-                bounds = widgetBounds(InterfaceID.Orbs.ORB_HEALTH, InterfaceID.OrbsNomap.ORB_HEALTH);
-                if (bounds != null)
-                {
-                    int diameter = bounds.height + setting("poisonring", "diameter", -1);
-                    bounds = new Rectangle(bounds.x + bounds.width - bounds.height + setting("poisonring", "shiftX", 1),
-                        bounds.y + setting("poisonring", "shiftY", 1), Math.max(0, diameter), Math.max(0, diameter));
-                    int padding = Math.max(0, setting("poisonring", "lineThickness", 2)) / 2 + 4;
-                    bounds.grow(padding, padding);
-                }
-                return bounds;
-            default: return null;
-        }
+        buffer = null;
+        dirty = null;
     }
 
-    private Rectangle widgetBounds(int normal, int noMap)
-    {
-        Widget widget = client.getWidget(normal);
-        if (widget == null || widget.isHidden())
-        {
-            widget = client.getWidget(noMap);
-        }
-        return widget == null || widget.isHidden() ? null : new Rectangle(widget.getBounds());
-    }
-
-    private int setting(String group, String key, int fallback)
-    {
-        Integer value = configs.getConfiguration(group, key, Integer.class);
-        return value == null ? fallback : value;
-    }
 }

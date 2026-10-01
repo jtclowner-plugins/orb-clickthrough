@@ -62,7 +62,7 @@ public class OrbOverlayCompatibilityTest
         when(manager.anyMatch(any())).thenAnswer(i -> registered.stream().anyMatch(i.getArgument(0)));
         when(manager.add(any())).thenAnswer(i -> registered.add(i.getArgument(0)));
         when(manager.remove(any())).thenAnswer(i -> registered.remove((Object) i.getArgument(0)));
-        compatibility = new OrbOverlayCompatibility(manager, tooltips, provider, new OrbOverlayRenderer(client, otherConfigs));
+        compatibility = new OrbOverlayCompatibility(manager, tooltips, provider, new OrbOverlayRenderer(client));
     }
 
     @Test
@@ -94,6 +94,89 @@ public class OrbOverlayCompatibilityTest
             render(overlay);
             assertEquals(overlay.getClass().getName(), 2, tooltips.getTooltips().size());
         }
+    }
+
+    public static class FutureOrbOverlay extends Overlay
+    {
+        final TooltipManager tooltips;
+        FutureOrbOverlay(TooltipManager tooltips)
+        {
+            this.tooltips = tooltips;
+            setPosition(net.runelite.client.ui.overlay.OverlayPosition.DYNAMIC);
+            setLayer(net.runelite.client.ui.overlay.OverlayLayer.ABOVE_WIDGETS);
+        }
+        @Override public java.awt.Dimension render(Graphics2D graphics)
+        {
+            graphics.setColor(Color.BLUE);
+            graphics.fillRect(320, 200, 30, 30); // deliberately far outside any native orb
+            graphics.fillRect(325, 205, 20, 20);
+            tooltips.add(new net.runelite.client.ui.overlay.tooltip.Tooltip("future orb tooltip"));
+            return null; // dynamic overlays need not report drawing bounds
+        }
+        void addHook() { drawAfterLayer(InterfaceID.Orbs.PRAYERBUTTON); }
+    }
+
+    @Test
+    public void futureOverlayNeedsExplicitMappingAndFadesAllDrawingOnce() throws Exception
+    {
+        FutureOrbOverlay future = new FutureOrbOverlay(tooltips);
+        registered.add(future);
+        compatibility.sync();
+        assertEquals(1, registered.size());
+        when(config.customOrbOverlays()).thenReturn(future.getClass().getName() + "=prayer");
+        compatibility.sync();
+        Overlay adapter = registered.get(1);
+        net.runelite.client.ui.overlay.tooltip.Tooltip world = new net.runelite.client.ui.overlay.tooltip.Tooltip("Take Coins");
+        tooltips.add(world);
+        BufferedImage drawing = render(adapter);
+        assertEquals(128, drawing.getRGB(330, 210) >>> 24);
+        assertEquals(List.of(world), tooltips.getTooltips());
+        when(config.managePrayerOrb()).thenReturn(false);
+        assertEquals(255, render(adapter).getRGB(330, 210) >>> 24);
+        assertEquals(2, tooltips.getTooltips().size());
+        when(config.customOrbOverlays()).thenReturn("");
+        compatibility.sync();
+        assertEquals(List.of(future), registered);
+        assertEquals(net.runelite.client.ui.overlay.OverlayLayer.ABOVE_WIDGETS, future.getLayer());
+    }
+
+    @Test
+    public void dedicatedFutureTooltipCanBeSkippedAndNewDrawHooksRestoreOriginal() throws Exception
+    {
+        FutureOrbOverlay future = new FutureOrbOverlay(tooltips);
+        registered.add(future);
+        when(config.customOrbOverlays()).thenReturn(future.getClass().getName() + "=prayer:tooltip");
+        compatibility.sync();
+        Overlay adapter = registered.get(1);
+        assertEquals(0, alphaSum(render(adapter)));
+        assertTrue(tooltips.getTooltips().isEmpty());
+        when(config.suppressOrbTooltips()).thenReturn(false);
+        assertEquals(255, render(adapter).getRGB(330, 210) >>> 24);
+        future.addHook();
+        compatibility.sync();
+        assertEquals(List.of(future), registered);
+        assertEquals(net.runelite.client.ui.overlay.OverlayLayer.ABOVE_WIDGETS, future.getLayer());
+    }
+
+    @Test
+    public void invalidMappingCannotAccidentallyWrapWorldTooltipOverlay()
+    {
+        FutureOrbOverlay future = new FutureOrbOverlay(tooltips);
+        registered.add(future);
+        when(config.customOrbOverlays()).thenReturn(future.getClass().getName() + "=everything\n" + future.getClass().getName() + "=prayer:typo");
+        compatibility.sync();
+        assertEquals(List.of(future), registered);
+    }
+
+    @Test
+    public void mouseTooltipsCannotBeMappedToAnOrb() throws Exception
+    {
+        Overlay mouse = construct("net.runelite.client.plugins.mousehighlight.MouseHighlightOverlay", client, tooltips,
+            defaults("net.runelite.client.plugins.mousehighlight.MouseHighlightConfig", Map.of()));
+        registered.add(mouse);
+        when(config.customOrbOverlays()).thenReturn(mouse.getClass().getName() + "=prayer:tooltip");
+        compatibility.sync();
+        assertEquals(List.of(mouse), registered);
     }
 
     @Test
@@ -294,7 +377,7 @@ public class OrbOverlayCompatibilityTest
         when(client.getRealSkillLevel(net.runelite.api.Skill.PRAYER)).thenReturn(99);
         when(client.getBoostedSkillLevel(net.runelite.api.Skill.PRAYER)).thenReturn(10);
         real.add(original);
-        OrbOverlayCompatibility integration = new OrbOverlayCompatibility(real, tooltips, provider, new OrbOverlayRenderer(client, otherConfigs));
+        OrbOverlayCompatibility integration = new OrbOverlayCompatibility(real, tooltips, provider, new OrbOverlayRenderer(client));
         integration.sync();
         java.lang.reflect.Method getLayer = real.getClass().getDeclaredMethod("getLayer", net.runelite.client.ui.overlay.OverlayLayer.class);
         getLayer.setAccessible(true);

@@ -72,6 +72,18 @@ public interface OrbClickthroughConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "customOrbOverlays",
+			name = "Additional orb overlays",
+			description = "Optional mappings, one per line: full.overlay.Class=prayer (or health, run, special, compass, worldMap, xp, activity, wiki, store, logout). Append :tooltip for an overlay that draws ONLY a tooltip. Only map overlays dedicated to that orb; all their queued tooltips follow its selection.",
+			section = miscSection,
+			position = 4
+	)
+	default String customOrbOverlays()
+	{
+		return "";
+	}
+
+	@ConfigItem(
 			keyName = "hotkey",
 			name = "Hotkey",
 			description = "Hotkey used to activate or restore orb clicks. If no hotkey is set, orbs are always click-through.",

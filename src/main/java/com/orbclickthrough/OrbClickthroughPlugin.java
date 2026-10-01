@@ -372,6 +372,11 @@ public class OrbClickthroughPlugin extends Plugin
 				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
 	}
 
+	String customOrbOverlays()
+	{
+		return config.customOrbOverlays();
+	}
+
 	float nativeOrbOpacity(String orb)
 	{
 		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow() && managesOrb(orb)
