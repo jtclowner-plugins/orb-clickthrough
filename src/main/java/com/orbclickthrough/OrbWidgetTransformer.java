@@ -56,6 +56,7 @@ public class OrbWidgetTransformer
     private final Map<Widget, String> originalTargetVerb = new IdentityHashMap<>();
     private final Map<Widget, String[]> originalActions = new IdentityHashMap<>();
     private final Map<Widget, Integer> originalOpacity = new IdentityHashMap<>();
+    private final Map<Widget, Boolean> transparencyVisibility = new IdentityHashMap<>();
     private final Map<Widget, Integer> hoverSprites = new IdentityHashMap<>();
     private final Map<Widget, Boolean> hoverTooltipVisibility = new IdentityHashMap<>();
     private final Map<Integer, WidgetBounds> originalBounds = new HashMap<>();
@@ -142,6 +143,8 @@ public class OrbWidgetTransformer
 
     public void applyTransparency(int percent)
     {
+        transparencyVisibility.forEach(Widget::setHidden);
+        transparencyVisibility.clear();
         int clampedPercent = Math.max(0, Math.min(100, percent));
         if (clampedPercent == 0)
         {
@@ -158,6 +161,13 @@ public class OrbWidgetTransformer
             }
             int original = originalOpacity.computeIfAbsent(widget, Widget::getOpacity);
             widget.setOpacity(original + Math.round((255 - original) * clampedPercent / 100f));
+            // Native sprite alpha is 256 - opacity: opacity 255 still draws at 1/256.
+            // Hide visual widgets for an exact 100%, and restore before scripts run again.
+            if (clampedPercent == 100)
+            {
+                transparencyVisibility.computeIfAbsent(widget, Widget::isSelfHidden);
+                widget.setHidden(true);
+            }
         }
     }
 
@@ -165,6 +175,8 @@ public class OrbWidgetTransformer
     {
         originalOpacity.forEach(Widget::setOpacity);
         originalOpacity.clear();
+        transparencyVisibility.forEach(Widget::setHidden);
+        transparencyVisibility.clear();
     }
 
     public boolean isMouseOverManagedOrb()

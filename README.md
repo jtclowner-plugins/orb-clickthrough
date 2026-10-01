@@ -25,6 +25,8 @@ Enable or disable click-through handling for each supported minimap orb.
 
 ### Miscellaneous
 - **Click-through transparency**: Fade selected orbs by 0–100% (default 50%) whenever click-through is active, in every hotkey mode. Normal appearance returns when clicks are restored. Changes to this setting preserve the current held/toggled state.
+
+At 100%, native visual widgets are hidden for the drawing frame and restored before game scripts update them again. This avoids the native sprite renderer's remaining 1/256 opacity. The modern logout orb includes both its button/backing and its separate sibling icon.
 - **Suppress orb tooltips**: On by default. Suppresses native orb tooltips/highlights, the World Map tooltip, Prayer statistics, Run Energy, Poison, Spec Regen Timer and both Quick Prayer Preview display modes for selected click-through orbs. All unrelated mouse tooltips remain visible.
 - **Fade plugin-created orb overlays**: On by default. Applies the transparency percentage to supported plugin orb visuals while their associated orb is click-through. Independent of tooltip suppression.
 - **Additional orb overlays**: Optional mappings for other plugins. Leave blank to use built-in support. See below for the format.

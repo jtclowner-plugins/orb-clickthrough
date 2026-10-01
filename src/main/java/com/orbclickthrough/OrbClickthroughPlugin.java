@@ -155,6 +155,8 @@ public class OrbClickthroughPlugin extends Plugin
 	private static final int FIXED_COMPASS_CLICK = InterfaceID.Toplevel.COMPASSCLICK;
 
 	private static final int LOGOUT_STONE = InterfaceID.ToplevelPreEoc.STONE10;
+	// The icon is a sibling of the backing/button, not a child of it.
+	private static final int LOGOUT_ICON = InterfaceID.ToplevelPreEoc.ICON10;
 
 	// Radar noclick regions that cover the world map/wiki/logout/radar orb areas.
 	// Resizable Modern
@@ -583,6 +585,7 @@ public class OrbClickthroughPlugin extends Plugin
 		if (config.manageLogoutOrb())
 		{
 			widgetTransformer.allowClickThroughTree(LOGOUT_STONE);
+			widgetTransformer.allowClickThroughTree(LOGOUT_ICON);
 		}
 	}
 
@@ -817,7 +820,7 @@ public class OrbClickthroughPlugin extends Plugin
 		}
 
 		return config.manageLogoutOrb()
-				&& isWidgetOrChildOfAny(widgetId, LOGOUT_STONE)
+				&& isWidgetOrChildOfAny(widgetId, LOGOUT_STONE, LOGOUT_ICON)
 				&& LOGOUT_MENU_OPTIONS.contains(option);
 	}
 

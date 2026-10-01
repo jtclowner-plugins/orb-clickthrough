@@ -159,6 +159,45 @@ public class OrbAppearanceTest
         verify(client, never()).getWidget(anyInt());
     }
 
+    @Test
+    public void logoutFadesBothSiblingVisualsAndRestoresVisibility() throws Exception
+    {
+        Widget backing = visual(0);
+        Widget icon = visual(0);
+        java.util.concurrent.atomic.AtomicBoolean backingHidden = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean iconHidden = new java.util.concurrent.atomic.AtomicBoolean();
+        when(backing.isSelfHidden()).thenAnswer(call -> backingHidden.get());
+        when(icon.isSelfHidden()).thenAnswer(call -> iconHidden.get());
+        when(backing.setHidden(anyBoolean())).thenAnswer(call -> { backingHidden.set(call.getArgument(0)); return backing; });
+        when(icon.setHidden(anyBoolean())).thenAnswer(call -> { iconHidden.set(call.getArgument(0)); return icon; });
+        when(client.getWidget(InterfaceID.ToplevelPreEoc.STONE10)).thenReturn(backing);
+        when(client.getWidget(InterfaceID.ToplevelPreEoc.ICON10)).thenReturn(icon);
+        OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
+        when(config.manageLogoutOrb()).thenReturn(true);
+        OrbClickthroughPlugin plugin = new OrbClickthroughPlugin();
+        set(plugin, "client", client);
+        set(plugin, "config", config);
+        set(plugin, "widgetTransformer", transformer);
+        java.lang.reflect.Method apply = OrbClickthroughPlugin.class.getDeclaredMethod("applyConfiguredOrbChanges");
+        apply.setAccessible(true);
+        apply.invoke(plugin);
+        transformer.applyTransparency(50);
+        assertEquals(128, backing.getOpacity());
+        assertEquals(128, icon.getOpacity());
+        transformer.applyTransparency(100);
+        assertTrue(backing.isSelfHidden());
+        assertTrue(icon.isSelfHidden());
+        transformer.applyTransparency(50);
+        assertFalse(backing.isSelfHidden());
+        assertFalse(icon.isSelfHidden());
+        transformer.applyTransparency(100);
+        transformer.restoreOrbWidgetsChangedByUs();
+        assertFalse(backing.isSelfHidden());
+        assertFalse(icon.isSelfHidden());
+        assertEquals(0, backing.getOpacity());
+        assertEquals(0, icon.getOpacity());
+    }
+
     static void set(Object target, String name, Object value) throws Exception
     {
         Field field = target.getClass().getDeclaredField(name);
