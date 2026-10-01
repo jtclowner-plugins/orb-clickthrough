@@ -5,6 +5,8 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Keybind;
+import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 @ConfigGroup("orbclickthrough")
 public interface OrbClickthroughConfig extends Config
@@ -30,6 +32,44 @@ public interface OrbClickthroughConfig extends Config
 			closedByDefault = true
 	)
 	String miscSection = "miscSection";
+
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+			keyName = "clickThroughTransparency",
+			name = "Click-through transparency",
+			description = "Transparency of selected orbs while click-through is active. 0% keeps their normal appearance; 100% is transparent.",
+			section = miscSection,
+			position = 1
+	)
+	default int clickThroughTransparency()
+	{
+		return 50;
+	}
+
+	@ConfigItem(
+			keyName = "suppressPluginTooltips",
+			name = "Suppress orb tooltips",
+			description = "Suppress native orb tooltips/highlights and supported plugin tooltips (Prayer, Run Energy, Poison, Spec Regen Timer and Quick Prayer Preview) for selected click-through orbs. Unrelated mouse tooltips remain visible.",
+			section = miscSection,
+			position = 2
+	)
+	default boolean suppressOrbTooltips()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = "fadePluginOverlays",
+			name = "Fade plugin-created orb overlays",
+			description = "Apply click-through transparency to supported orb visuals from Prayer, Soulreaper Axe QoL, Regeneration Meter and Poison Ring.",
+			section = miscSection,
+			position = 3
+	)
+	default boolean fadePluginOverlays()
+	{
+		return true;
+	}
 
 	@ConfigItem(
 			keyName = "hotkey",
@@ -187,15 +227,4 @@ public interface OrbClickthroughConfig extends Config
 		return false;
 	}
 
-	@ConfigItem(
-			keyName = "hideWorldMapTooltip",
-			name = "Hide World Map tooltip",
-			description = "Hide the World Map hover tooltip while orb click-through is active.",
-			section = miscSection,
-			position = 0
-	)
-	default boolean hideWorldMapTooltip()
-	{
-		return true;
-	}
 }

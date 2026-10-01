@@ -1,0 +1,1 @@
+Unmodified test-only source fixtures from Enriath/external-plugins commit 17896d7db4202e1fab550ad560bacefc631a2090 (Quick Prayer Preview). Original license headers retained. These classes are never included in the production plugin jar.

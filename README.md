@@ -24,5 +24,6 @@ It is intended for players who want to avoid accidentally clicking minimap orbs 
 Enable or disable click-through handling for each supported minimap orb.
 
 ### Miscellaneous
-- **Hide World Map tooltip**: Hides the World Map hover tooltip while orb click-through is active.
-
+- **Click-through transparency**: Fade selected orbs by 0-100% while click-through is active (default 50%). Normal appearance returns when clicks are restored.
+- **Suppress orb tooltips**: On by default. Suppresses native orb tooltips/highlights and supported plugin tooltips from Prayer, Run Energy, Poison, Spec Regen Timer and Quick Prayer Preview. Unrelated mouse tooltips remain visible.
+- **Fade plugin-created orb overlays**: On by default. Applies the transparency setting to supported orb visuals from Prayer, Soulreaper Axe QoL, Regeneration Meter and Poison Ring.

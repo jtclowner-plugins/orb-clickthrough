@@ -1,0 +1,207 @@
+package com.orbclickthrough;
+
+import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.Point;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.SpriteID;
+import net.runelite.api.events.BeforeRender;
+import net.runelite.api.events.ClientTick;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetType;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.*;
+
+public class OrbAppearanceTest
+{
+    private final Client client = mock(Client.class);
+    private final OrbWidgetTransformer transformer = new OrbWidgetTransformer(client);
+
+    private Widget visual(int opacity)
+    {
+        Widget widget = mock(Widget.class);
+        AtomicInteger value = new AtomicInteger(opacity);
+        when(widget.getType()).thenReturn(WidgetType.GRAPHIC);
+        when(widget.getOpacity()).thenAnswer(invocation -> value.get());
+        when(widget.setOpacity(anyInt())).thenAnswer(invocation -> {
+            value.set(invocation.getArgument(0));
+            return widget;
+        });
+        return widget;
+    }
+
+    @Test
+    public void fadesAllChildKindsWithoutAccumulatingAndRestoresOriginalAlpha()
+    {
+        Widget root = mock(Widget.class);
+        Widget background = visual(0);
+        Widget icon = visual(100);
+        Widget nested = visual(0);
+        Widget unrelated = visual(0);
+        when(client.getWidget(1)).thenReturn(root);
+        when(root.getStaticChildren()).thenReturn(new Widget[]{background, null});
+        when(background.getDynamicChildren()).thenReturn(new Widget[]{icon});
+        when(root.getNestedChildren()).thenReturn(new Widget[]{nested});
+        // Shared references and even cycles must not cause duplicate work.
+        when(icon.getNestedChildren()).thenReturn(new Widget[]{root});
+        transformer.allowClickThroughTree(1);
+        transformer.applyTransparency(50);
+        transformer.applyTransparency(50);
+        assertEquals(128, background.getOpacity());
+        assertEquals(178, icon.getOpacity());
+        assertEquals(128, nested.getOpacity());
+        assertEquals(0, unrelated.getOpacity());
+        transformer.restoreOrbWidgetsChangedByUs();
+        assertEquals(0, background.getOpacity());
+        assertEquals(100, icon.getOpacity());
+        assertEquals(0, nested.getOpacity());
+    }
+
+    @Test
+    public void nextFrameUsesUpdatedGameOpacityAndZeroDisablesFading()
+    {
+        Widget widget = visual(0);
+        transformer.allowClickThrough(widget);
+        transformer.applyTransparency(50);
+        transformer.restoreTransparency();
+        widget.setOpacity(100);
+        transformer.applyTransparency(50);
+        assertEquals(178, widget.getOpacity());
+        transformer.applyTransparency(0);
+        assertEquals(100, widget.getOpacity());
+        transformer.applyTransparency(150);
+        assertEquals(255, widget.getOpacity());
+        transformer.restoreEverythingChangedByUs();
+        assertEquals(100, widget.getOpacity());
+    }
+
+    @Test
+    public void renderingFollowsEveryActivationMode() throws Exception
+    {
+        when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+        for (OrbClickthroughActivationMode mode : OrbClickthroughActivationMode.values())
+        {
+            for (boolean active : new boolean[]{false, true})
+            {
+                OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
+                when(config.activationMode()).thenReturn(mode);
+                when(config.clickThroughTransparency()).thenReturn(65);
+                when(config.suppressOrbTooltips()).thenReturn(true);
+                OrbWidgetTransformer mockedTransformer = mock(OrbWidgetTransformer.class);
+                when(mockedTransformer.isMouseOverManagedOrb()).thenReturn(true);
+                OrbClickthroughPlugin plugin = new OrbClickthroughPlugin();
+                set(plugin, "client", client);
+                set(plugin, "config", config);
+                set(plugin, "widgetTransformer", mockedTransformer);
+                set(plugin, "hotkeyHeld", mode == OrbClickthroughActivationMode.HOLD_TO_RESTORE_CLICKS ? !active : active);
+                set(plugin, "toggleActive", active);
+                plugin.onBeforeRender(new BeforeRender());
+                verify(mockedTransformer, times(active ? 1 : 0)).applyTransparency(65);
+                verify(mockedTransformer, times(active ? 1 : 0)).suppressHoverEffects();
+                plugin.onClientTick(new ClientTick());
+                verify(mockedTransformer).restoreTransparency();
+                verify(mockedTransformer).restoreHoverEffects();
+            }
+        }
+    }
+
+    @Test
+    public void hoverSuppressionPreservesActiveIndicatorsAndRestoresSpritesAndTooltips()
+    {
+        Widget widget = visual(0);
+        AtomicInteger sprite = new AtomicInteger(SpriteID.OrbXp.ACTIVATED_HOVERED);
+        when(widget.getSpriteId()).thenAnswer(invocation -> sprite.get());
+        when(widget.setSpriteId(anyInt())).thenAnswer(invocation -> {
+            sprite.set(invocation.getArgument(0));
+            return widget;
+        });
+        Point mouse = new Point(100, 100);
+        when(client.getMouseCanvasPosition()).thenReturn(mouse);
+        when(widget.contains(mouse)).thenReturn(true);
+        Widget tooltip = mock(Widget.class);
+        Widget alreadyHidden = mock(Widget.class);
+        when(alreadyHidden.isSelfHidden()).thenReturn(true);
+        when(client.getWidget(InterfaceID.Orbs.TOOLTIP)).thenReturn(tooltip);
+        when(client.getWidget(InterfaceID.Orbs.WORLDMAP_TOOLTIP)).thenReturn(alreadyHidden);
+        transformer.allowClickThrough(widget);
+        assertTrue(transformer.isMouseOverManagedOrb());
+        transformer.suppressHoverEffects();
+        transformer.suppressHoverEffects();
+        assertEquals(SpriteID.OrbXp.ACTIVATED, widget.getSpriteId());
+        verify(tooltip, atLeastOnce()).setHidden(true);
+        verify(widget, never()).setHasListener(anyBoolean());
+        transformer.restoreOrbWidgetsChangedByUs();
+        assertEquals(SpriteID.OrbXp.ACTIVATED_HOVERED, widget.getSpriteId());
+        verify(tooltip).setHidden(false);
+        verify(alreadyHidden, never()).setHidden(false);
+        assertFalse(transformer.isMouseOverManagedOrb());
+    }
+
+    @Test
+    public void hiddenAndUnselectedWidgetsDoNotSuppressTooltips()
+    {
+        Point mouse = new Point(100, 100);
+        when(client.getMouseCanvasPosition()).thenReturn(mouse);
+        Widget widget = visual(0);
+        when(widget.contains(mouse)).thenReturn(true);
+        assertFalse(transformer.isMouseOverManagedOrb());
+        transformer.allowClickThrough(widget);
+        when(widget.isHidden()).thenReturn(true);
+        assertFalse(transformer.isMouseOverManagedOrb());
+        transformer.suppressHoverEffects();
+        verify(client, never()).getWidget(anyInt());
+    }
+
+    @Test
+    public void logoutFadesBothSiblingVisualsAndRestoresVisibility() throws Exception
+    {
+        Widget backing = visual(0);
+        Widget icon = visual(0);
+        java.util.concurrent.atomic.AtomicBoolean backingHidden = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean iconHidden = new java.util.concurrent.atomic.AtomicBoolean();
+        when(backing.isSelfHidden()).thenAnswer(call -> backingHidden.get());
+        when(icon.isSelfHidden()).thenAnswer(call -> iconHidden.get());
+        when(backing.setHidden(anyBoolean())).thenAnswer(call -> { backingHidden.set(call.getArgument(0)); return backing; });
+        when(icon.setHidden(anyBoolean())).thenAnswer(call -> { iconHidden.set(call.getArgument(0)); return icon; });
+        when(client.getWidget(InterfaceID.ToplevelPreEoc.STONE10)).thenReturn(backing);
+        when(client.getWidget(InterfaceID.ToplevelPreEoc.ICON10)).thenReturn(icon);
+        OrbClickthroughConfig config = mock(OrbClickthroughConfig.class);
+        when(config.manageLogoutOrb()).thenReturn(true);
+        OrbClickthroughPlugin plugin = new OrbClickthroughPlugin();
+        set(plugin, "client", client);
+        set(plugin, "config", config);
+        set(plugin, "widgetTransformer", transformer);
+        java.lang.reflect.Method apply = OrbClickthroughPlugin.class.getDeclaredMethod("applyConfiguredOrbChanges");
+        apply.setAccessible(true);
+        apply.invoke(plugin);
+        transformer.applyTransparency(50);
+        assertEquals(128, backing.getOpacity());
+        assertEquals(128, icon.getOpacity());
+        transformer.applyTransparency(100);
+        assertTrue(backing.isSelfHidden());
+        assertTrue(icon.isSelfHidden());
+        transformer.applyTransparency(50);
+        assertFalse(backing.isSelfHidden());
+        assertFalse(icon.isSelfHidden());
+        transformer.applyTransparency(100);
+        transformer.restoreOrbWidgetsChangedByUs();
+        assertFalse(backing.isSelfHidden());
+        assertFalse(icon.isSelfHidden());
+        assertEquals(0, backing.getOpacity());
+        assertEquals(0, icon.getOpacity());
+    }
+
+    static void set(Object target, String name, Object value) throws Exception
+    {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+}

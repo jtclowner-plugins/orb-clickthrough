@@ -10,6 +10,9 @@ import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
+import net.runelite.api.Point;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.SpriteID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
 
@@ -44,6 +47,7 @@ public class OrbWidgetTransformer
 
     private final Set<Widget> hiddenByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> noClickThroughChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Widget> transparencyExcluded = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> targetVerbChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Widget> actionsChangedByUs = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Integer> boundsChangedByUs = new HashSet<>();
@@ -51,6 +55,10 @@ public class OrbWidgetTransformer
     private final Map<Widget, Boolean> originalNoClickThrough = new IdentityHashMap<>();
     private final Map<Widget, String> originalTargetVerb = new IdentityHashMap<>();
     private final Map<Widget, String[]> originalActions = new IdentityHashMap<>();
+    private final Map<Widget, Integer> originalOpacity = new IdentityHashMap<>();
+    private final Map<Widget, Boolean> transparencyVisibility = new IdentityHashMap<>();
+    private final Map<Widget, Integer> hoverSprites = new IdentityHashMap<>();
+    private final Map<Widget, Boolean> hoverTooltipVisibility = new IdentityHashMap<>();
     private final Map<Integer, WidgetBounds> originalBounds = new HashMap<>();
 
     @Inject
@@ -90,17 +98,38 @@ public class OrbWidgetTransformer
      */
     public void allowClickThroughTree(int widgetId)
     {
-        Widget root = client.getWidget(widgetId);
+        allowClickThroughTree(client.getWidget(widgetId));
+    }
 
-        if (root == null)
+    public void allowClickThroughTree(Widget widget)
+    {
+        allowClickThroughTree(widget, Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    public void excludeTransparencyTree(Widget root)
+    {
+        if (root == null || !transparencyExcluded.add(root)) return;
+        for (Widget[] children : new Widget[][]{root.getStaticChildren(), root.getDynamicChildren(), root.getNestedChildren()})
+            if (children != null)
+                for (Widget child : children) excludeTransparencyTree(child);
+    }
+
+    private void allowClickThroughTree(Widget root, Set<Widget> visited)
+    {
+        if (root == null || !visited.add(root))
         {
             return;
         }
 
         allowClickThrough(root);
 
-        Widget[] descendants = root.getNestedChildren();
+        allowClickThroughChildren(root.getStaticChildren(), visited);
+        allowClickThroughChildren(root.getDynamicChildren(), visited);
+        allowClickThroughChildren(root.getNestedChildren(), visited);
+    }
 
+    private void allowClickThroughChildren(Widget[] descendants, Set<Widget> visited)
+    {
         if (descendants == null)
         {
             return;
@@ -108,7 +137,121 @@ public class OrbWidgetTransformer
 
         for (Widget descendant : descendants)
         {
-            allowClickThrough(descendant);
+            allowClickThroughTree(descendant, visited);
+        }
+    }
+
+    public void applyTransparency(int percent)
+    {
+        transparencyVisibility.forEach(Widget::setHidden);
+        transparencyVisibility.clear();
+        int clampedPercent = Math.max(0, Math.min(100, percent));
+        if (clampedPercent == 0)
+        {
+            restoreTransparency();
+            return;
+        }
+
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            // Layers do not draw; apply alpha to their individual visual children.
+            if (widget.getType() == WidgetType.LAYER || transparencyExcluded.contains(widget))
+            {
+                continue;
+            }
+            int original = originalOpacity.computeIfAbsent(widget, Widget::getOpacity);
+            widget.setOpacity(original + Math.round((255 - original) * clampedPercent / 100f));
+            // Native sprite alpha is 256 - opacity: opacity 255 still draws at 1/256.
+            // Hide visual widgets for an exact 100%, and restore before scripts run again.
+            if (clampedPercent == 100)
+            {
+                transparencyVisibility.computeIfAbsent(widget, Widget::isSelfHidden);
+                widget.setHidden(true);
+            }
+        }
+    }
+
+    public void restoreTransparency()
+    {
+        originalOpacity.forEach(Widget::setOpacity);
+        originalOpacity.clear();
+        transparencyVisibility.forEach(Widget::setHidden);
+        transparencyVisibility.clear();
+    }
+
+    public boolean isMouseOverManagedOrb()
+    {
+        Point mouse = client.getMouseCanvasPosition();
+        if (mouse == null)
+        {
+            return false;
+        }
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            if (!widget.isHidden() && widget.contains(mouse))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void suppressHoverEffects()
+    {
+        // Only normalize hover sprites for drawing. Disabling widget listeners
+        // would also stop stat/var/timer updates, freezing the live orb contents.
+        for (Widget widget : noClickThroughChangedByUs)
+        {
+            int sprite = widget.getSpriteId();
+            int normal = normalOrbSprite(sprite);
+            if (normal != sprite)
+            {
+                hoverSprites.putIfAbsent(widget, sprite);
+                widget.setSpriteId(normal);
+            }
+        }
+        if (isMouseOverManagedOrb())
+        {
+            hideHoverTooltip(client.getWidget(InterfaceID.Orbs.TOOLTIP));
+            hideHoverTooltip(client.getWidget(InterfaceID.Orbs.WORLDMAP_TOOLTIP));
+        }
+    }
+
+    private void hideHoverTooltip(Widget widget)
+    {
+        if (widget != null)
+        {
+            hoverTooltipVisibility.putIfAbsent(widget, widget.isSelfHidden());
+            widget.setHidden(true);
+        }
+    }
+
+    public void restoreHoverEffects()
+    {
+        hoverSprites.forEach(Widget::setSpriteId);
+        hoverSprites.clear();
+        hoverTooltipVisibility.forEach(Widget::setHidden);
+        hoverTooltipVisibility.clear();
+    }
+
+    static int normalOrbSprite(int sprite)
+    {
+        switch (sprite)
+        {
+            case SpriteID.OrbFrame.FRAME_HOVERED: return SpriteID.OrbFrame.FRAME;
+            case SpriteID.OrbXp.HOVERED: return SpriteID.OrbXp.ORB;
+            case SpriteID.OrbXp.ACTIVATED_HOVERED: return SpriteID.OrbXp.ACTIVATED;
+            case SpriteID.WorldmapIcon._1: return SpriteID.WorldmapIcon._0;
+            case SpriteID.WorldmapIcon._3: return SpriteID.WorldmapIcon._2;
+            case SpriteID.WorldmapIcon._5: return SpriteID.WorldmapIcon._4;
+            case SpriteID.WorldmapIcon._7: return SpriteID.WorldmapIcon._6;
+            case SpriteID.WorldmapIconLarge._1: return SpriteID.WorldmapIconLarge._0;
+            case SpriteID.WorldmapIconLarge._3: return SpriteID.WorldmapIconLarge._2;
+            case SpriteID.WorldmapIconLarge._5: return SpriteID.WorldmapIconLarge._4;
+            case SpriteID.WorldmapIconLarge._7: return SpriteID.WorldmapIconLarge._6;
+            case SpriteID.WikiIcon.SELECTED: return SpriteID.WikiIcon.DESELECTED;
+            case SpriteID.Ring34._1: return SpriteID.Ring34._0;
+            default: return sprite;
         }
     }
 
@@ -551,6 +694,9 @@ public class OrbWidgetTransformer
 
     public void restoreOrbWidgetsChangedByUs()
     {
+        transparencyExcluded.clear();
+        restoreTransparency();
+        restoreHoverEffects();
         restoreHiddenWidgets();
         restoreClickThroughWidgets();
         restoreTargetVerbs();

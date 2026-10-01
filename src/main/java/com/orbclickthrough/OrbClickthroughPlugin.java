@@ -10,6 +10,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.ClientTick;
+import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.WidgetLoaded;
@@ -151,10 +152,11 @@ public class OrbClickthroughPlugin extends Plugin
 	// Compass/logout widgets.
 	private static final int MODERN_COMPASS_CLICK = InterfaceID.ToplevelPreEoc.COMPASSCLICK;
 	private static final int CLASSIC_COMPASS_CLICK = InterfaceID.ToplevelOsrsStretch.COMPASSCLICK;
-	private static final int COMPASS_NOCLICK_CHILD_INDEX = 0;
-	private static final int COMPASS_ACTION_CHILD_INDEX = 1;
+	private static final int FIXED_COMPASS_CLICK = InterfaceID.Toplevel.COMPASSCLICK;
 
 	private static final int LOGOUT_STONE = InterfaceID.ToplevelPreEoc.STONE10;
+	// The icon is a sibling of the backing/button, not a child of it.
+	private static final int LOGOUT_ICON = InterfaceID.ToplevelPreEoc.ICON10;
 
 	// Radar noclick regions that cover the world map/wiki/logout/radar orb areas.
 	// Resizable Modern
@@ -188,7 +190,14 @@ public class OrbClickthroughPlugin extends Plugin
 	@Inject
 	private OrbWidgetTransformer widgetTransformer;
 
+	@Inject
+	private OrbOverlayCompatibility overlayCompatibility;
+
 	private HotkeyListener hotkeyListener;
+	private boolean running;
+
+	@Inject
+	private CompassAppearance compassAppearance;
 
 	private boolean hotkeyHeld;
 	private boolean toggleActive;
@@ -200,6 +209,7 @@ public class OrbClickthroughPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		running = true;
 		log.debug("Orb Clickthrough started");
 
 		hotkeyListener = new HotkeyListener(() -> config.hotkey())
@@ -238,6 +248,7 @@ public class OrbClickthroughPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		running = false;
 		if (hotkeyListener != null)
 		{
 			keyManager.unregisterKeyListener(hotkeyListener);
@@ -246,6 +257,8 @@ public class OrbClickthroughPlugin extends Plugin
 
 		clientThread.invokeLater(() ->
 		{
+			compassAppearance.stop();
+			overlayCompatibility.stop();
 			widgetTransformer.restoreEverythingChangedByUs();
 			hotkeyHeld = false;
 			toggleActive = false;
@@ -307,8 +320,11 @@ public class OrbClickthroughPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			widgetTransformer.restoreEverythingChangedByUs();
-			hotkeyHeld = false;
-			toggleActive = false;
+			if ("hotkey".equals(event.getKey()) || "activationMode".equals(event.getKey()))
+			{
+				hotkeyHeld = false;
+				toggleActive = false;
+			}
 			orbWidgetsApplied = false;
 			markNoClickRegionsDirty();
 			syncState();
@@ -318,10 +334,69 @@ public class OrbClickthroughPlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
+		// Remove the previous frame's tint before game scripts update orb visuals.
+		widgetTransformer.restoreTransparency();
+		widgetTransformer.restoreHoverEffects();
 		// This is deliberately cheap and idempotent. It also repairs widget state
 		// if another plugin or a client update recreates or resets an orb child.
 		syncState();
 		syncExtraNoClickRegionState();
+	}
+
+	@Subscribe(priority = -100)
+	public void onBeforeRender(BeforeRender event)
+	{
+		if (running)
+		{
+			overlayCompatibility.sync();
+			compassAppearance.beginFrame();
+		}
+		if (client.getGameState() == GameState.LOGGED_IN && shouldApplyNow())
+		{
+			if (config.suppressOrbTooltips())
+			{
+				widgetTransformer.suppressHoverEffects();
+			}
+			widgetTransformer.applyTransparency(config.clickThroughTransparency());
+		}
+	}
+
+	boolean suppressPluginTooltip(String orb)
+	{
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
+				&& managesOrb(orb) && config.suppressOrbTooltips();
+	}
+
+	float pluginOverlayOpacity(String orb)
+	{
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow()
+				&& managesOrb(orb) && config.fadePluginOverlays()
+				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
+	}
+
+	float nativeOrbOpacity(String orb)
+	{
+		return running && client.getGameState() == GameState.LOGGED_IN && shouldApplyNow() && managesOrb(orb)
+				? 1f - Math.max(0, Math.min(100, config.clickThroughTransparency())) / 100f : 1f;
+	}
+
+	private boolean managesOrb(String orb)
+	{
+		switch (orb)
+		{
+			case "health": return config.manageHealthOrb();
+			case "prayer": return config.managePrayerOrb();
+			case "run": return config.manageRunOrb();
+			case "special": return config.manageSpecialAttackOrb();
+			case "worldMap": return config.manageWorldMapOrb();
+			case "xp": return config.manageXpOrb();
+			case "activity": return config.manageActivityOrb();
+			case "wiki": return config.manageWikiOrb();
+			case "store": return config.manageStoreOrb();
+			case "compass": return config.manageCompassOrb();
+			case "logout": return config.manageLogoutOrb();
+			default: return false;
+		}
 	}
 
 	@Subscribe
@@ -412,7 +487,7 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private void applyConfiguredOrbChanges()
 	{
-		if (config.hideWorldMapTooltip())
+		if (config.manageWorldMapOrb() && config.suppressOrbTooltips())
 		{
 			widgetTransformer.hideWidget(WORLDMAP_TOOLTIP);
 		}
@@ -456,6 +531,8 @@ public class OrbClickthroughPlugin extends Plugin
 		{
 			widgetTransformer.allowClickThroughTree(ACTIVITY_BACKING);
 			widgetTransformer.allowClickThrough(ACTIVITY_BUTTON);
+			widgetTransformer.allowClickThrough(InterfaceID.Orbs.CR_INDICATOR);
+			widgetTransformer.allowClickThrough(InterfaceID.Orbs.CR_ICON);
 		}
 
 		if (config.manageWikiOrb())
@@ -495,28 +572,15 @@ public class OrbClickthroughPlugin extends Plugin
 		if (config.manageCompassOrb())
 		{
 			Widget compassClick = getActiveCompassClickWidget();
-
-			if (compassClick != null)
-			{
-				Widget compassNoClickChild = compassClick.getChild(COMPASS_NOCLICK_CHILD_INDEX);
-
-				if (compassNoClickChild != null)
-				{
-					widgetTransformer.allowClickThrough(compassNoClickChild);
-				}
-
-				Widget compassActionChild = compassClick.getChild(COMPASS_ACTION_CHILD_INDEX);
-
-				if (compassActionChild != null)
-				{
-					widgetTransformer.allowClickThrough(compassActionChild);
-				}
-			}
+			widgetTransformer.allowClickThroughTree(compassClick);
+			// Native post-compositing fades this complete area once, including the frame.
+			widgetTransformer.excludeTransparencyTree(compassClick);
 		}
 
 		if (config.manageLogoutOrb())
 		{
-			widgetTransformer.allowClickThrough(LOGOUT_STONE);
+			widgetTransformer.allowClickThroughTree(LOGOUT_STONE);
+			widgetTransformer.allowClickThroughTree(LOGOUT_ICON);
 		}
 	}
 
@@ -625,6 +689,10 @@ public class OrbClickthroughPlugin extends Plugin
 
 	private Widget getActiveCompassClickWidget()
 	{
+		if (!client.isResized())
+		{
+			return client.getWidget(FIXED_COMPASS_CLICK);
+		}
 		int activeMapNoClick0 = getActiveMapNoClick0WidgetId();
 
 		if (activeMapNoClick0 == MODERN_MAP_NOCLICK_0)
@@ -740,14 +808,14 @@ public class OrbClickthroughPlugin extends Plugin
 		}
 
 		if (config.manageCompassOrb()
-				&& isWidgetOrChildOfAny(widgetId, MODERN_COMPASS_CLICK, CLASSIC_COMPASS_CLICK)
+				&& isWidgetOrChildOfAny(widgetId, MODERN_COMPASS_CLICK, CLASSIC_COMPASS_CLICK, FIXED_COMPASS_CLICK)
 				&& COMPASS_MENU_OPTIONS.contains(option))
 		{
 			return true;
 		}
 
 		return config.manageLogoutOrb()
-				&& isWidgetOrChildOfAny(widgetId, LOGOUT_STONE)
+				&& isWidgetOrChildOfAny(widgetId, LOGOUT_STONE, LOGOUT_ICON)
 				&& LOGOUT_MENU_OPTIONS.contains(option);
 	}
 
