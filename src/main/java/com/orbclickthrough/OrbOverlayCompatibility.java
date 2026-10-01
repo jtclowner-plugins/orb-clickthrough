@@ -9,9 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
-import java.util.Objects;
-import lombok.extern.slf4j.Slf4j;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.client.ui.overlay.Overlay;
@@ -23,7 +20,6 @@ import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
 /** Adapters for inspected, unmodified orb overlays. Uses public overlay registration APIs only. */
 @Singleton
-@Slf4j
 class OrbOverlayCompatibility
 {
     private final OverlayManager overlays;
@@ -31,8 +27,6 @@ class OrbOverlayCompatibility
     private final OrbClickthroughPlugin plugin;
     private final OrbOverlayRenderer renderer;
     private final Map<Overlay, Adapter> adapters = new IdentityHashMap<>();
-    private final Map<String, Association> custom = new HashMap<>();
-    private String mappingText;
 
     @Inject
     OrbOverlayCompatibility(OverlayManager overlays, TooltipManager tooltips, OrbClickthroughPlugin plugin, OrbOverlayRenderer renderer)
@@ -45,7 +39,6 @@ class OrbOverlayCompatibility
 
     void sync()
     {
-        readMappings();
         List<Overlay> registered = new ArrayList<>();
         // The public predicate API also lets us inspect registrations without reflection.
         overlays.anyMatch(overlay -> { registered.add(overlay); return false; });
@@ -56,7 +49,6 @@ class OrbOverlayCompatibility
             if (!registered.contains(entry.getKey()) || !registered.contains(entry.getValue())
                 || entry.getKey().getLayer() != OverlayLayer.MANUAL
                 || !entry.getKey().getDrawHooks().isEmpty()
-                || !entry.getValue().matches(associationFor(entry.getKey()))
                 || entry.getKey().getPosition() != entry.getValue().getPosition()
                 || entry.getKey().getPriority() != entry.getValue().getPriority())
             {
@@ -66,67 +58,20 @@ class OrbOverlayCompatibility
         }
         for (Overlay overlay : registered)
         {
-            Association association = associationFor(overlay);
-            if (overlay instanceof Adapter || association == null || adapters.containsKey(overlay) || !overlay.getDrawHooks().isEmpty()
+            String orb = orbFor(overlay.getClass().getName());
+            if (overlay instanceof Adapter || orb == null || adapters.containsKey(overlay) || !overlay.getDrawHooks().isEmpty()
                 || (overlay.getPosition() != OverlayPosition.DYNAMIC && overlay.getPosition() != OverlayPosition.TOOLTIP && overlay.getPosition() != OverlayPosition.DETACHED)
                 || overlay.getLayer() == OverlayLayer.MANUAL)
             {
                 continue;
             }
-            Adapter adapter = new Adapter(overlay, association.orb, association.tooltipOnly);
+            Adapter adapter = new Adapter(overlay, orb,
+                overlay.getClass().getName().equals("io.hydrox.quickprayerpreview.QuickPrayerPreviewOverlay"));
             // Keep the original registered so its owner's remove() still works on plugin shutdown.
             // With no manual draw hooks it stops rendering; adding our adapter rebuilds the layers.
             overlay.setLayer(OverlayLayer.MANUAL);
             adapters.put(overlay, adapter);
             overlays.add(adapter);
-        }
-    }
-
-    private Association associationFor(Overlay overlay)
-    {
-        String name = overlay.getClass().getName();
-        // Mouse Tooltips describes world interactions, even when the pointer is over an orb.
-        if (name.equals("net.runelite.client.plugins.mousehighlight.MouseHighlightOverlay")) return null;
-        Association override = custom.get(name);
-        if (override != null) return override;
-        String orb = orbFor(name);
-        return orb == null ? null : new Association(orb,
-            name.equals("io.hydrox.quickprayerpreview.QuickPrayerPreviewOverlay"));
-    }
-
-    private void readMappings()
-    {
-        String text = Objects.toString(plugin.customOrbOverlays(), "");
-        if (text.equals(mappingText)) return;
-        mappingText = text;
-        custom.clear();
-        for (String line : text.split("[\\r\\n;]+"))
-        {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            String[] parts = line.split("=", -1);
-            String[] target = parts.length == 2 ? parts[1].trim().split(":", -1) : new String[0];
-            if (parts.length != 2 || !parts[0].trim().matches("[A-Za-z_$][\\w$]*(\\.[A-Za-z_$][\\w$]*)+" )
-                || target.length < 1 || target.length > 2
-                || !Set.of("health", "prayer", "run", "special", "compass", "worldMap", "xp", "activity", "wiki", "store", "logout").contains(target[0])
-                || (target.length == 2 && !"tooltip".equals(target[1])))
-            {
-                log.warn("Ignoring invalid orb overlay mapping: {}", line);
-                continue;
-            }
-            custom.put(parts[0].trim(), new Association(target[0], target.length == 2));
-        }
-    }
-
-    private static final class Association
-    {
-        final String orb;
-        final boolean tooltipOnly;
-
-        Association(String orb, boolean tooltipOnly)
-        {
-            this.orb = orb;
-            this.tooltipOnly = tooltipOnly;
         }
     }
 
@@ -184,11 +129,6 @@ class OrbOverlayCompatibility
             setPosition(original.getPosition());
             setLayer(originalLayer);
             setPriority(original.getPriority());
-        }
-
-        boolean matches(Association association)
-        {
-            return association != null && orb.equals(association.orb) && directTooltip == association.tooltipOnly;
         }
 
         @Override

@@ -29,7 +29,6 @@ Enable or disable click-through handling for each supported minimap orb.
 At 100%, native visual widgets are hidden for the drawing frame and restored before game scripts update them again. This avoids the native sprite renderer's remaining 1/256 opacity. The modern logout orb includes both its button/backing and its separate sibling icon.
 - **Suppress orb tooltips**: On by default. Suppresses native orb tooltips/highlights, the World Map tooltip, Prayer statistics, Run Energy, Poison, Spec Regen Timer and both Quick Prayer Preview display modes for selected click-through orbs. All unrelated mouse tooltips remain visible.
 - **Fade plugin-created orb overlays**: On by default. Applies the transparency percentage to supported plugin orb visuals while their associated orb is click-through. Independent of tooltip suppression.
-- **Additional orb overlays**: Optional mappings for other plugins. Leave blank to use built-in support. See below for the format.
 
 ## Plugin compatibility
 
@@ -45,24 +44,11 @@ Support is implemented entirely inside Orb Clickthrough and works with unmodifie
 
 Select the associated orb to apply fading. Prayer and Special Attack are not selected by default. Soulreaper's offset extra orb follows the Special Attack selection. Spec Regen Timer's tooltip is suppressed while the selected Special Attack orb is click-through. LITE Regen Meter is excluded.
 
-Exact overlay classes identify the supported producers. Original instances remain registered so their owners can remove them on shutdown. Temporary adapters preserve the original rendering layer and restore normal rendering when Orb Clickthrough stops. Changes to an overlay's layer, position, priority or mapping are resynchronized; overlays with manual draw hooks are left to their owners to avoid duplicate rendering. Unknown overlays are untouched unless explicitly mapped.
+Exact overlay classes identify the supported producers. Original instances remain registered so their owners can remove them on shutdown. Temporary adapters preserve the original rendering layer and restore normal rendering when Orb Clickthrough stops. Changes to an overlay's layer, position or priority are resynchronized; overlays with manual draw hooks are left to their owners to avoid duplicate rendering. Unknown overlays are untouched.
 
 Replacement orbs are drawn into a reusable canvas-sized offscreen buffer and faded once as a group, including their text and overlapping fills. A graphics wrapper records actual drawing bounds, including child graphics contexts, so only painted regions are cleared and copied. No plugin-specific drawing rectangles, offset configuration keys or text-width guesses are needed. Regeneration Meter's two strokes are identified by the fixed HP/spec colours in its source, so their transparency remains independent even when their positions overlap. This adapter affects only Regeneration Meter, not other drawings with the same colours.
 
 Tooltip suppression removes only tooltip objects added during a known producer's synchronous render call; it never matches tooltip text or clears the shared queue. Quick Prayer Preview's dedicated tooltip overlay is skipped to cover its directly drawn panel too.
-
-### Additional orb overlays
-
-Enter a fully qualified overlay class and its associated orb, one mapping per line (semicolons also work):
-
-```text
-example.plugin.ExtraPrayerOverlay=prayer
-example.plugin.CompassTooltipOverlay=compass:tooltip
-```
-
-Supported orb names: `health`, `prayer`, `run`, `special`, `compass`, `worldMap`, `xp`, `activity`, `wiki`, `store`, `logout`. Mappings follow the associated orb's selection, hotkey state, transparency and the two existing checkboxes. Removing a mapping restores the original overlay. Invalid mappings are ignored and logged.
-
-Use `:tooltip` only for an entire overlay dedicated to displaying a tooltip panel: suppression skips its rendering. Without that suffix, normal drawing is preserved and only newly queued tooltip objects are suppressed. Map only overlays dedicated to an orb; a mixed overlay containing unrelated information cannot be separated automatically. Mouse Tooltips is always excluded, including from custom mappings. The class name is available in the plugin's source. Future plugins can be mapped without changing their source or Orb Clickthrough, provided they use ordinary dynamic, detached or tooltip overlays without manual draw hooks. Tooltips added outside the overlay's render call cannot be attributed this way.
 
 ### Native compass
 
